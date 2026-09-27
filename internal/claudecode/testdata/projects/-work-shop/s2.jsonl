@@ -1,0 +1,2 @@
+{"type":"user","uuid":"v1","sessionId":"s2","timestamp":"2026-09-27T09:00:00.000Z","cwd":"/work/shop","gitBranch":"main","version":"2.1.283","promptSource":"typed","message":{"role":"user","content":"Fix the flaky test in checkout.spec.ts"}}
+{"type":"assistant","uuid":"v2","sessionId":"s2","timestamp":"2026-09-27T09:00:05.000Z","message":{"role":"assistant","model":"claude-sonnet-5","content":[{"type":"text","text":"Looking into the flaky test now."}]}}

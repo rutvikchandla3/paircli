@@ -1,5 +1,11 @@
 # Architecture
 
+> **v2 in progress.** The signal pipeline is being rebuilt per
+> [`plan/README.md`](plan/README.md) and [`SIGNALS.md`](SIGNALS.md). Where this
+> document disagrees with those, they win. Settled since this was written:
+> Codex rollouts record the starting commit in `session_meta.git.commit_hash`.
+> T28 rewrites this file.
+
 ## Two capture paths
 
 **Path A — hooks installed.** paircli ships a hook/plugin per harness that

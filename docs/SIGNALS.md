@@ -1,88 +1,110 @@
-# Signal taxonomy
+# Signal catalog (v2)
 
-paircli's job: given a PR, produce a structured record of the *development
-process* behind it — not just the diff. This is the signal set we capture,
-grouped by what question each answers for a reviewer.
+paircli turns AI coding sessions (Claude Code, Codex CLI, Pi) into review
+signals for a PR. This file is the product source of truth: what each signal
+means, where its data comes from, and how much to trust it. The algorithms
+live in the task specs under [`plan/tasks/`](plan/tasks/); the data types
+live in [`plan/CONTRACTS.md`](plan/CONTRACTS.md).
 
-## 1. Provenance signals (who/what produced this code)
+Long-form rationale, research and UI mocks: the "Session Signal Catalog" doc
+(https://claude.ai/artifact/CuEY6SMP18P2TVbeNqcCxJ).
 
-- `harnesses_used`: distinct set of agent harnesses involved (Claude Code,
-  Codex CLI, Pi, human-direct-edit).
-- `sessions`: list of session records (one per harness invocation), each with
-  harness name, session id, start/end timestamps, model(s) used.
-- `authorship_mix`: rough attribution of changed lines/files to
-  human-typed vs agent-generated vs agent-edited-then-human-modified, where
-  derivable.
-- `capture_completeness`: `hooked` (our capture was installed and ran live) vs
-  `reconstructed` (recovered post-hoc from local transcripts) vs `partial` vs
-  `none` — this is itself a signal reviewers should see, since reconstructed
-  data has lower confidence.
+## Ground rules
 
-## 2. Process signals (how the work happened)
+- **In scope:** harness transcripts on disk, paircli hook/extension records,
+  and the PR's own commits and diff (the join key). Tickets, CI, incident
+  history and code graphs are out of scope.
+- **Provenance on everything.** `recorded` = the harness wrote it down.
+  `derived` = deterministic code over recorded events. `inferred` = grounded
+  LLM judgment; every inferred item cites the events it used, and uncited
+  items are dropped.
+- **Absence is not evidence.** Every report shows capture coverage (AUTH-2)
+  first, so "no tests ran" is never confused with "we didn't see the session
+  where tests ran".
+- **Signals describe a change, never a person.** See "Won't build" below.
 
-- `session_count` and `session_count_per_harness` — one harness with 6 short
-  sessions reads differently than one long session.
-- `wall_clock_span`: first session start → last session end for this PR.
-  Distinct from CI/PR-open-to-merge time.
-- `iteration_count`: number of user prompts/turns per session — a rough proxy
-  for how much back-and-forth was needed.
-- `correction_signals`: turns where the user's next prompt reads as a
-  correction to the agent's prior action (heuristic: negative-sentiment
-  short follow-up after a tool-heavy turn, e.g. "no, don't do that", "revert
-  that", explicit `git checkout`/`git reset` tool calls issued by the human
-  mid-session). Surfaces where the agent went down a wrong path.
-- `plan_revisions`: count of distinct plans/approaches proposed within a
-  session (via plan-mode entries, or repeated large rewrites of the same
-  files).
-- `test_run_count` / `test_failure_then_pass_count`: how many times tests
-  were run, and whether failures were iterated on and resolved before the PR
-  was opened, vs. never run locally at all.
-- `interrupted_or_abandoned_sessions`: sessions that end mid-task (no
-  matching commit, or the harness reports the run was cancelled).
+## Catalog
 
-## 3. Scope/diff-linkage signals
+State values: `alert` (look at this), `info` (context), `clear` (checked,
+nothing found), `unknown` (no data). Milestones: M1 = deterministic report
+from transcripts, M2 = hooks, M3 = LLM pass.
 
-- `commits`: PR's commit list, each annotated with which session (if any)
-  produced it, and by which method (`sha_exact` | `heuristic`).
-- `files_touched_by_session`: cross-reference of PR file list against which
-  session's tool calls wrote to each file — flags files changed outside any
-  captured session (possible manual edit, or an uncaptured harness).
-- `unattributed_commits`: PR commits with no session match at all — the
-  strongest "we have no signal here" flag.
+| ID | Question | Signal | Pri | Provenance | Milestone | One-line definition |
+|---|---|---|---|---|---|---|
+| INT-1 | intent | Ask ledger | P0 | derived | M1 (condense: M3) | Every human prompt in order, including mid-turn steering and slash-command arguments |
+| INT-2 | intent | Human-answered decisions | P0 | recorded | M1 | Questions the agent asked and the option a human picked |
+| INT-3 | intent | Approved plan and plan drift | P0 | recorded | M1 (drift: M3) | Plan text a human approved; drift = planned steps with no change, changes never planned |
+| INT-4 | intent | Rules in effect | P1 | recorded | M2 (violations: M3) | Instruction files (CLAUDE.md, AGENTS.md, rules) loaded in the sessions |
+| AUTH-1 | authorship | Line-level authorship | P0 | derived | M1 (human edits via hooks: M2) | Each added PR line labeled agent / agent-then-human / human-in-session / uncaptured |
+| AUTH-2 | authorship | Session-commit map and coverage | P0 | derived | M1 | Which sessions produced which commits, and what share of lines they explain |
+| AUTH-3 | authorship | Model mix and disclosure trailer | P1 | recorded | M1 | Models behind the agent lines, plus a ready `Assisted-by:` trailer |
+| VER-1 | verification | Verification log | P0 | recorded | M1 | Test, lint, typecheck and build commands that ran, with outcome |
+| VER-2 | verification | Verification freshness | P0 | derived | M1 | PR lines edited after the last passing check; code never checked |
+| VER-3 | verification | Check-to-change coverage | P1 | derived | M1 | Changed source files no check plausibly exercised (heuristic, labeled "likely") |
+| VER-4 | verification | Test integrity | P0 | derived | M1 | Tests edited after failing, assertions weakened, skips added, snapshots regenerated, tests deleted |
+| VER-5 | verification | Quality-gate bypasses | P0 | derived | M1 | `--no-verify`, hook-skip env vars, new lint/type suppressions, CI or coverage config edits |
+| VER-6 | verification | Runtime and visual evidence | P1 | recorded | M1 | Screenshots, dev servers, local requests, editor errors still open at the end |
+| DEC-1 | decisions | Human corrections | P0 | recorded | M1 (classification: M3) | Interrupts, rejected tool calls, denials and correction prompts, mapped to the lines they touched |
+| DEC-2 | decisions | Abandoned approaches | P1 | derived | M1 (summaries: M3) | Code written then reverted, rollbacks, abandoned Pi branches |
+| DEC-3 | decisions | Decision trail | P1 | inferred | M3 | The choices that shaped the diff, each with reason and citation |
+| FRI-1 | friction | Churn hotspots | P1 | derived | M1 | Files with far more edits and edit-to-check cycles than the rest |
+| FRI-2 | friction | Loops and unresolved errors | P1 | derived | M1 | Same failing command 3+ times; errors never followed by success |
+| FRI-3 | friction | Context resets | P1 | recorded | M1 (lost constraints: M3) | Compactions, clears, resumes, forks; PR lines written after a reset |
+| FRI-4 | friction | Knowledge lookups | P2 | recorded | M1 | Web searches and fetches, mapped to the hunks that followed |
+| EXP-1 | exposure | Side-effect ledger | P0 | derived | M1 | Commands with effects outside the diff (migrations, pushes, deletes, infra, publishes, writes outside the repo) |
+| EXP-2 | exposure | Dependency provenance | P0 | derived | M1 | Packages the agent added, whether a human asked for them, failed installs of names that don't exist |
+| EXP-3 | exposure | Untrusted-input chain | P0 | derived | M1 | External content read, then sensitive paths edited in the same session |
+| EXP-4 | exposure | Secret contact | P1 | derived | M1 | Secret files read; secret-shaped strings seen in prompts or output (reported masked) |
+| OVS-1 | oversight | Autonomy envelope | P0 | recorded | M1 | Permission/approval/sandbox mode per turn; share of tool calls with no approval step |
+| OVS-2 | oversight | Human touchpoints | P1 | derived | M1 | Human inputs on the timeline; longest unattended stretch and the lines written in it |
+| OVS-3 | oversight | Delegated work | P2 | recorded | M1 | Subagents, their models, and the lines they wrote |
+| CON-1 | consistency | Claim check | P0 | inferred | M3 | Claims in the PR body and final messages checked against recorded facts |
+| CON-2 | consistency | Open loops | P1 | recorded | M1 (stated caveats: M3) | Todo items still open, TODO/FIXME added, caveats the agent stated |
+| CON-3 | consistency | Scope match | P1 | inferred | M3 | Hunks that trace to the ask, plan or a decision, and hunks that trace to nothing |
 
-## 4. Tool/action signals
+## Harness support
 
-- `tool_call_summary`: counts by tool type per session (file edits, shell
-  commands run, tests run, web/doc lookups, subagent/delegate calls).
-- `shell_commands_run`: notable commands (build, test, lint, migration,
-  deploy-adjacent) — not the full raw list, which is noise; filtered to
-  categories a reviewer would care about.
-- `external_context_pulled`: whether the session read docs, fetched URLs, or
-  used MCP tools to pull in outside context (relevant for "did the agent
-  actually understand the API it's using" style review questions).
+Each cell is *transcript only → with paircli hooks/extension*:
+`full`, `partial`, or `none`. The engine attaches the row for each harness
+present in a report as `Signal.support`.
 
-## 5. Cost/efficiency signals
+| ID | Claude Code | Codex | Pi |
+|---|---|---|---|
+| INT-1 | full → full | full → full | full → full |
+| INT-2 | full → full | full → full | partial → full |
+| INT-3 | full → full | partial → partial | none → partial |
+| INT-4 | partial → full | full → full | partial → full |
+| AUTH-1 | full → full | partial → full | partial → full |
+| AUTH-2 | partial → full | partial → full | partial → full |
+| AUTH-3 | full → full | full → full | full → full |
+| VER-1, VER-2 | full → full | full → full | partial → full |
+| VER-3 | partial → partial | partial → partial | partial → partial |
+| VER-4, VER-5 | full → full | full → full | full → full |
+| VER-6 | full → full | partial → partial | partial → partial |
+| DEC-1 | full → full | full → full | partial → full |
+| DEC-2 | partial → full | partial → partial | full → full |
+| DEC-3, CON-1, CON-3 | full → full | full → full | partial → partial |
+| FRI-1..4 | full → full | full → full | full → full |
+| EXP-1..4 | full → full | full → full | full → full |
+| OVS-1 | full → full | full → full | partial → full |
+| OVS-2 | full → full | full → full | full → full |
+| OVS-3 | full → full | partial → full | partial → partial |
+| CON-2 | full → full | full → full | partial → partial |
 
-- `token_usage`: input/output/cached tokens per session, aggregated per PR.
-- `model(s)`: which model(s) ran each session (relevant since capability
-  differs materially by model).
-- `approval_friction`: count of tool-call approvals requested vs. denied, and
-  count of destructive-action confirmations — signals how much the human was
-  actively supervising vs. running on autopilot.
+## Won't build
 
-## Non-goals for v1
+Easy to compute, deliberately excluded:
 
-- No sentiment/quality scoring of the agent's code itself — that's what the
-  actual PR review is for. Signals describe *process*, not verdict.
-- No attempt to capture full transcript replay in the primary output — the
-  structured signal folder links to raw session sources so a reviewer *can*
-  drill in, but the top-level output must stay skimmable.
-- No signal requires a specific harness's proprietary format to be readable
-  by a human — everything normalizes into one schema (see ARCHITECTURE.md).
+- Developer productivity or AI-usage leaderboards from sessions.
+- Prompt-quality grades of people (coaching belongs in an author-only view).
+- Idle, away or typing time (Claude Code's `away_summary` and `turn_duration` are ignored).
+- A single composite PR risk score.
+- Token spend in the reviewer view (kept in `sessions/*.json` only).
+- The raw transcript as the primary UI (it stays one click deep).
 
-## Confidence tagging
+## Deferred
 
-Every signal in the output carries a `confidence` of `exact` (hook-captured,
-SHA-linked), `inferred` (heuristic-matched, e.g. time+path correlation), or
-`unknown` (no data available for this harness/session). Reviewers should be
-able to tell at a glance which parts of the report to trust fully.
+- **Redaction** of secrets and private text in stored or posted output. Until
+  it lands: `internal/redact.Text` is a no-op seam every renderer calls,
+  `comment.md` never includes prompt text unless `comment.include_prompts`
+  is set, and the LLM pass is off by default.

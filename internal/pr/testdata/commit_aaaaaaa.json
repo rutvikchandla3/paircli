@@ -1,0 +1,9 @@
+{
+  "files": [
+    {
+      "filename": "checkout.go",
+      "status": "added",
+      "patch": "@@ -0,0 +1,2 @@\n+package shop\n+func Checkout() {}"
+    }
+  ]
+}

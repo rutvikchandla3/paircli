@@ -7,6 +7,7 @@
 
 # paircli local state (event logs, scan output)
 .paircli/
+/.paircli.local.json
 
 # OS cruft
 .DS_Store

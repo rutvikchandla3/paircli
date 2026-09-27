@@ -480,15 +480,6 @@ func extractBashCommand(raw json.RawMessage) string {
 	return v.Command
 }
 
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
-}
-
 // logHookError appends one timestamped line to ~/.paircli/hook-errors.log.
 // It is itself best-effort: a hook must never fail loudly, even when it
 // cannot even log why.

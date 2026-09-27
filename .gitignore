@@ -1,0 +1,13 @@
+# Go build output
+/paircli
+/bin/
+*.exe
+*.test
+*.out
+
+# paircli local state (event logs, scan output)
+.paircli/
+
+# OS cruft
+.DS_Store
+Thumbs.db

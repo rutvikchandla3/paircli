@@ -2,7 +2,12 @@
 // the open questions that block full implementation.
 package pi
 
-import "github.com/rutvikchandla3/paircli/internal/session"
+import (
+	"errors"
+	"io"
+
+	"github.com/rutvikchandla3/paircli/internal/session"
+)
 
 // TODO(pi): Path B needs the exact local session store path/format Pi's
 // extension writes confirmed at implementation time — ARCHITECTURE.md notes
@@ -22,3 +27,11 @@ func InstallHooks() error {
 
 // HooksInstalled always reports false until InstallHooks is implemented.
 func HooksInstalled() bool { return false }
+
+// UninstallHooks is a stub until T21 implements the Pi extension.
+func UninstallHooks() error {
+	return errors.New("pi hooks: not implemented yet (T21)")
+}
+
+// RunHookEvent is a stub until T21 implements the Pi extension.
+func RunHookEvent(event string, stdin io.Reader) error { return nil }

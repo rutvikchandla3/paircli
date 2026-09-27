@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/rutvikchandla3/paircli/internal/claudecode"
@@ -9,19 +10,60 @@ import (
 	"github.com/rutvikchandla3/paircli/internal/pi"
 )
 
-// runHook dispatches both `paircli hook install <harness>` (Path-A setup)
-// and `paircli hook <harness> <event>` (invoked BY the installed hook), per
-// ARCHITECTURE.md's CLI shape.
+// harnessHooks is the per-harness hook integration `paircli hook` dispatches
+// to. Every harness package (claudecode, codex, pi) implements this same
+// shape so the CLI never needs to change when a new harness's hooks land.
+type harnessHooks struct {
+	Install        func() error
+	Uninstall      func() error
+	Installed      func() bool
+	Run            func(event string, stdin io.Reader) error
+	InstallMessage func() string // optional: extra line printed after install
+}
+
+// harnessTable maps each supported harness name to its hook integration.
+var harnessTable = map[string]harnessHooks{
+	"claude-code": {
+		Install:   claudecode.InstallHooks,
+		Uninstall: claudecode.UninstallHooks,
+		Installed: claudecode.HooksInstalled,
+		Run:       claudecode.RunHookEvent,
+	},
+	"codex": {
+		Install:   codex.InstallHooks,
+		Uninstall: codex.UninstallHooks,
+		Installed: codex.HooksInstalled,
+		Run:       codex.RunHookEvent,
+	},
+	"pi": {
+		Install:   pi.InstallHooks,
+		Uninstall: pi.UninstallHooks,
+		Installed: pi.HooksInstalled,
+		Run:       pi.RunHookEvent,
+	},
+}
+
+// runHook dispatches:
+//
+//	paircli hook install <harness>
+//	paircli hook uninstall <harness>
+//	paircli hook <harness> <Event>   (invoked BY the installed hook)
 func runHook(args []string) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: paircli hook install <harness> | paircli hook <harness> <event>")
+		return fmt.Errorf("usage: paircli hook install <harness> | paircli hook uninstall <harness> | paircli hook <harness> <event>")
 	}
 
-	if args[0] == "install" {
+	switch args[0] {
+	case "install":
 		if len(args) < 2 {
 			return fmt.Errorf("usage: paircli hook install <harness>")
 		}
-		return installHook(args[1])
+		return installHarness(args[1])
+	case "uninstall":
+		if len(args) < 2 {
+			return fmt.Errorf("usage: paircli hook uninstall <harness>")
+		}
+		return uninstallHarness(args[1])
 	}
 
 	harness := args[0]
@@ -30,32 +72,39 @@ func runHook(args []string) error {
 	}
 	event := args[1]
 
-	switch harness {
-	case "claude-code":
-		return claudecode.RunHookEvent(event, os.Stdin)
-	case "codex":
-		return fmt.Errorf("codex: hook event handling not yet implemented, tracked in docs/ARCHITECTURE.md")
-	case "pi":
-		return fmt.Errorf("pi: hook event handling not yet implemented, tracked in docs/ARCHITECTURE.md")
-	default:
+	h, ok := harnessTable[harness]
+	if !ok {
 		return fmt.Errorf("unknown harness %q", harness)
 	}
+	// Run implementations must never return a non-nil error for a bad event:
+	// they log failures themselves and return nil so the calling agent is
+	// never broken by a failing hook.
+	return h.Run(event, os.Stdin)
 }
 
-func installHook(harness string) error {
-	switch harness {
-	case "claude-code":
-		if err := claudecode.InstallHooks(); err != nil {
-			return err
-		}
-		path, _ := claudecode.SettingsPath()
-		fmt.Printf("paircli: installed Claude Code hooks in %s\n", path)
-		return nil
-	case "codex":
-		return codex.InstallHooks()
-	case "pi":
-		return pi.InstallHooks()
-	default:
+func installHarness(harness string) error {
+	h, ok := harnessTable[harness]
+	if !ok {
 		return fmt.Errorf("unknown harness %q (want claude-code | codex | pi)", harness)
 	}
+	if err := h.Install(); err != nil {
+		return err
+	}
+	fmt.Printf("paircli: installed %s hooks\n", harness)
+	if h.InstallMessage != nil {
+		fmt.Println(h.InstallMessage())
+	}
+	return nil
+}
+
+func uninstallHarness(harness string) error {
+	h, ok := harnessTable[harness]
+	if !ok {
+		return fmt.Errorf("unknown harness %q (want claude-code | codex | pi)", harness)
+	}
+	if err := h.Uninstall(); err != nil {
+		return err
+	}
+	fmt.Printf("paircli: uninstalled %s hooks\n", harness)
+	return nil
 }

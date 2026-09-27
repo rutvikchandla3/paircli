@@ -2,7 +2,12 @@
 // section for the open questions that block full implementation.
 package codex
 
-import "github.com/rutvikchandla3/paircli/internal/session"
+import (
+	"errors"
+	"io"
+
+	"github.com/rutvikchandla3/paircli/internal/session"
+)
 
 // TODO(codex): Path B needs a real Codex rollout JSONL sample to confirm
 // whether session_meta.git contains a usable commit SHA (ARCHITECTURE.md
@@ -24,3 +29,11 @@ func InstallHooks() error {
 
 // HooksInstalled always reports false until InstallHooks is implemented.
 func HooksInstalled() bool { return false }
+
+// UninstallHooks is a stub until T20 implements Codex hooks.
+func UninstallHooks() error {
+	return errors.New("codex hooks: not implemented yet (T20)")
+}
+
+// RunHookEvent is a stub until T20 implements Codex hooks.
+func RunHookEvent(event string, stdin io.Reader) error { return nil }

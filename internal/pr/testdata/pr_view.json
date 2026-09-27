@@ -1,0 +1,23 @@
+{
+  "number": 42,
+  "url": "https://github.com/acme/shop/pull/42",
+  "title": "Add checkout flow",
+  "body": "This adds the checkout flow.",
+  "headRefName": "feature/checkout",
+  "baseRefName": "main",
+  "createdAt": "2026-09-20T10:00:00Z",
+  "commits": [
+    {
+      "oid": "aaaaaaa1111111111111111111111111111111",
+      "messageHeadline": "Add checkout handler",
+      "messageBody": "",
+      "committedDate": "2026-09-20T10:05:00Z"
+    },
+    {
+      "oid": "bbbbbbb2222222222222222222222222222222",
+      "messageHeadline": "Fix checkout validation",
+      "messageBody": "Handles empty cart edge case.",
+      "committedDate": "2026-09-20T11:15:00Z"
+    }
+  ]
+}

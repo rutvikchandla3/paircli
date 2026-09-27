@@ -1,0 +1,8 @@
+diff --git a/checkout.go b/checkout.go
+index 1111111..2222222 100644
+--- a/checkout.go
++++ b/checkout.go
+@@ -1,2 +1,3 @@
+ package shop
++// checkout handles the checkout flow.
+ func Checkout() {}

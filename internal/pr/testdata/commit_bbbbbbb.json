@@ -1,0 +1,20 @@
+{
+  "files": [
+    {
+      "filename": "validate.go",
+      "status": "modified",
+      "patch": "@@ -1,1 +1,2 @@\n-old\n+new\n+extra"
+    },
+    {
+      "filename": "newname.go",
+      "previous_filename": "oldname.go",
+      "status": "renamed",
+      "patch": "@@ -1,1 +1,1 @@\n-x\n+y"
+    },
+    {
+      "filename": "binary.png",
+      "status": "modified",
+      "patch": ""
+    }
+  ]
+}

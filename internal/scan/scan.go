@@ -18,7 +18,9 @@ import (
 	"github.com/rutvikchandla3/paircli/internal/attrib"
 	"github.com/rutvikchandla3/paircli/internal/config"
 	"github.com/rutvikchandla3/paircli/internal/engine"
+	"github.com/rutvikchandla3/paircli/internal/enrich"
 	"github.com/rutvikchandla3/paircli/internal/gitinfo"
+	"github.com/rutvikchandla3/paircli/internal/judge"
 	"github.com/rutvikchandla3/paircli/internal/link"
 	"github.com/rutvikchandla3/paircli/internal/llm"
 	"github.com/rutvikchandla3/paircli/internal/model"
@@ -115,12 +117,25 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	// 9. Deterministic detectors.
 	sigs := engine.Run(ec)
 
-	// T26: LLM pass. When o.LLM is non-nil, T26 replaces this comment with
-	// judge.Run(ctx, o.LLM, ec, sigs, cfg) → ec.Judgments,
-	// engine.RunIDs(ec, "DEC-3", "CON-1", "CON-3") and enrich.Apply(ec, sigs).
-	// Nothing here until then: the LLM pass is off unless configured.
-	_ = ctx
-	_ = o.LLM
+	// T26: LLM pass. Without a provider the three inferred signals (DEC-3,
+	// CON-1, CON-3) stay unknown, and the report lists them under "Not
+	// available" with the hint to run with --llm. With one, the judge turns the
+	// deterministic signals and the session facts into model.Judgments, the
+	// inferred signals are recomputed from it, and the judgments are folded
+	// back into the other signals.
+	if o.LLM != nil {
+		j, err := judge.Run(ctx, o.LLM, ec, sigs, cfg)
+		if err != nil {
+			// Keep the deterministic output and note the failure on AUTH-2.
+			sigs = noteLLMError(sigs, err.Error())
+			j = nil
+		}
+		ec.Judgments = j
+		if j != nil {
+			sigs = replaceByID(sigs, engine.RunIDs(ec, inferredIDs...))
+			sigs = enrich.Apply(ec, sigs)
+		}
+	}
 
 	// 10. Report and files.
 	rep := render.BuildReport(render.BuildInput{
@@ -151,6 +166,46 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	}
 
 	return &Result{Report: rep, OutDir: outDir, Alerts: alertCount(sigs)}, nil
+}
+
+// inferredIDs are the three signals only the LLM pass produces (T26).
+var inferredIDs = []string{"DEC-3", "CON-1", "CON-3"}
+
+// replaceByID returns sigs with every signal in repl swapped in for the signal
+// of the same id, in place; a signal sigs does not carry is appended.
+func replaceByID(sigs []model.Signal, repl []model.Signal) []model.Signal {
+	for _, r := range repl {
+		done := false
+		for i := range sigs {
+			if sigs[i].ID == r.ID {
+				sigs[i] = r
+				done = true
+				break
+			}
+		}
+		if !done {
+			sigs = append(sigs, r)
+		}
+	}
+	return sigs
+}
+
+// noteLLMError records a failed LLM pass on AUTH-2's Data, the signal the
+// report footer is built from, and returns sigs unchanged otherwise.
+func noteLLMError(sigs []model.Signal, msg string) []model.Signal {
+	for i := range sigs {
+		if sigs[i].ID != "AUTH-2" {
+			continue
+		}
+		data := make(map[string]any, len(sigs[i].Data)+1)
+		for k, v := range sigs[i].Data {
+			data[k] = v
+		}
+		data["llm_errors"] = []string{msg}
+		sigs[i].Data = data
+		break
+	}
+	return sigs
 }
 
 // RepoRoot returns the git repository root containing cwd, but only when that

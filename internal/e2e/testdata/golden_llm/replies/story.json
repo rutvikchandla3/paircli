@@ -1,0 +1,51 @@
+{
+  "ask_summary": {
+    "ask": "Add retry with backoff to the webhook sender, and don't touch the queue.",
+    "refinements": [
+      "Make the webhook sender idempotent.",
+      "Add an idempotency key header to the webhook sender."
+    ],
+    "final_scope": "The retry loop in src/webhooks/retry.ts, a retry metric, and an idempotency key on the webhook sender.",
+    "cites": [
+      "ev:claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000/d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e002",
+      "ev:pi:8f0c2c7e-0000-4000-8000-000000000482/pi000001"
+    ]
+  },
+  "decisions": [
+    {
+      "choice": "Keep the retry attempt count in Postgres",
+      "reason": "the human picked Postgres over Redis when the agent asked",
+      "by": "human",
+      "cites": ["ev:claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000/toolu_ask"]
+    },
+    {
+      "choice": "Leave the queue path untouched",
+      "reason": "the first ask ruled it out",
+      "by": "human",
+      "cites": ["ev:claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000/d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e002"]
+    },
+    {
+      "choice": "Use a stable idempotency key derived from the payload",
+      "reason": "the per-attempt key was tried and dropped",
+      "by": "agent",
+      "cites": ["ev:pi:8f0c2c7e-0000-4000-8000-000000000482/pi000005"]
+    }
+  ],
+  "abandoned": [
+    {
+      "events": ["ev:pi:8f0c2c7e-0000-4000-8000-000000000482/pi000004"],
+      "summary": "Tried a per-attempt idempotency key on the abandoned branch and went back to a stable key.",
+      "cites": ["ev:pi:8f0c2c7e-0000-4000-8000-000000000482/pi000004"]
+    }
+  ],
+  "corrections": [
+    {
+      "event": "ev:claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000/d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e052",
+      "is_correction": false,
+      "about": "",
+      "cites": [
+        "ev:claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000/d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e052"
+      ]
+    }
+  ]
+}

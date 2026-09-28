@@ -6,6 +6,10 @@
 
 ## Alerts
 
+- **INT-3 Approved plan and plan drift:** Plan approved at 14:00 UTC in claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000; 1 plans proposed in total. (+2 inferred)
+  - Plan approved at 14:00 UTC (4 lines). · `claude-code:d41f7a0e` toolu_plan · 14:00 UTC
+  - Planned step with no matching change: add jitter to the backoff · `claude-code:d41f7a0e` toolu_plan · 14:00 UTC ◇
+  - Change not in the plan: `README.md` 4-6 ◇
 - **VER-2 Verification freshness:** 8 PR hunks were edited after the last passing test run (14:02 UTC).
   - `src/webhooks/retry.ts` lines 12 changed at 14:07 UTC, after the last passing run. · `src/webhooks/retry.ts` lines 12 · `claude-code:d41f7a0e` toolu_test_pass · 14:02 UTC
   - `src/webhooks/sender.ts` lines 14 changed at 14:52 UTC, after the last passing run. · `src/webhooks/sender.ts` lines 14 · `pi:8f0c2c7e` call_2 · 14:52 UTC
@@ -25,19 +29,28 @@
   - Added `p-retry@6.2.1`: the agent chose it; no prompt mentions it. · `package.json` lines 11 · `claude-code:d41f7a0e` toolu_install_ok · 14:03 UTC
 - **EXP-3 Untrusted-input chain:** 1 sensitive file was edited after reading external content in the same session.
   - 14:08 UTC read external content (`gh issue view 312`) → 14:09 UTC edited `.github/workflows/release.yml`. · `.github/workflows/release.yml` lines 22-23 · `claude-code:d41f7a0e` toolu_gh_issue · 14:08 UTC
+- **CON-1 Claim check:** 2 claims contradicted, 1 supported, 0 without evidence.
+  - “All tests pass.” is contradicted: Eight PR hunks were edited after the last passing test run, and the retry assertion was loosened between a failing run and the next pass. ◇
+  - “Adds tests for the retry path.” is supported. ◇
+  - “Using a stable key derived from the payload.” is contradicted: The added header is built from Date.now(), a per-call timestamp, not a value derived from the payload. ◇
 - **EXP-4 Secret contact:** 2 in prompts or output; 1 secret file read.
   - A anthropic_key appeared in command output at 14:10 UTC (sk-a…(33 chars)). · `claude-code:d41f7a0e` toolu_cat_env · 14:10 UTC
   - A db_url_password appeared in command output at 14:10 UTC (post…(20 chars)). · `claude-code:d41f7a0e` toolu_cat_env · 14:10 UTC
   - Read `.env` at 14:10 UTC. · `claude-code:d41f7a0e` toolu_cat_env · 14:10 UTC
-- **CON-2 Open loops:** 1 tasks still open at session end.
+- **CON-2 Open loops:** 1 tasks still open at session end. (+1 inferred)
   - Task still open at session end: “add jitter”
+  - Agent noted: “The idempotency key is derived from the payload rather than being unique per attempt.” · `pi:8f0c2c7e` pi000005 · 14:52 UTC ◇
+- **CON-3 Scope match:** 7 of 9 hunks trace to the ask or plan; 2 do not.
+  - `.github/workflows/release.yml` 20-23 does not trace to the ask, plan or a decision. · `.github/workflows/release.yml` lines 20-23 ◇
+  - `README.md` 4-6 does not trace to the ask, plan or a decision. · `README.md` lines 4-6 ◇
 
 ## What was actually asked for?
 
 ### INT-1 Ask ledger · □ derived · info
 
-3 prompts across 3 sessions; first: "Add retry with backoff to the webhook sender. Don't touch the queue.".
+3 prompts across 3 sessions; first: "Add retry with backoff to the webhook sender. Don't touch the queue.". (+1 inferred)
 
+- Ask (condensed): Add retry with backoff to the webhook sender, and don't touch the queue. · `claude-code:d41f7a0e` d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e002 · 14:00 UTC ◇
 - Add retry with backoff to the webhook sender. Don't touch the queue. · `claude-code:d41f7a0e` d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e002 · 14:00 UTC
 - Add an idempotency key header to the webhook sender. · `codex:019f0000` m1 · 14:41 UTC
 - Make the webhook sender idempotent. · `pi:8f0c2c7e` pi000001 · 14:49 UTC
@@ -52,11 +65,13 @@ Support: claude-code full, codex full, pi full.
 
 Support: claude-code full, codex full, pi full.
 
-### INT-3 Approved plan and plan drift · ■ recorded · info
+### INT-3 Approved plan and plan drift · ■ recorded · alert
 
-Plan approved at 14:00 UTC in claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000; 1 plans proposed in total.
+Plan approved at 14:00 UTC in claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000; 1 plans proposed in total. (+2 inferred)
 
 - Plan approved at 14:00 UTC (4 lines). · `claude-code:d41f7a0e` toolu_plan · 14:00 UTC
+- Planned step with no matching change: add jitter to the backoff · `claude-code:d41f7a0e` toolu_plan · 14:00 UTC ◇
+- Change not in the plan: `README.md` 4-6 ◇
 
 Support: claude-code full, codex partial, pi partial.
 
@@ -175,6 +190,16 @@ Support: claude-code full, codex full, pi full.
 
 Support: claude-code full, codex partial, pi full.
 
+### DEC-3 Decision trail · ◇ inferred · info
+
+3 decisions shaped this diff; first: Keep the retry attempt count in Postgres.
+
+- Keep the retry attempt count in Postgres — the human picked Postgres over Redis when the agent asked (human) · `claude-code:d41f7a0e` toolu_ask · 14:00 UTC ◇
+- Leave the queue path untouched — the first ask ruled it out (human) · `claude-code:d41f7a0e` d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e002 · 14:00 UTC ◇
+- Use a stable idempotency key derived from the payload — the per-attempt key was tried and dropped (agent) · `pi:8f0c2c7e` pi000005 · 14:52 UTC ◇
+
+Support: claude-code full, codex full, pi partial.
+
 ## Where did it struggle?
 
 ### FRI-1 Churn hotspots · □ derived · info
@@ -277,19 +302,33 @@ Support: claude-code full, codex partial, pi partial.
 
 ## Does the PR's story match the session's?
 
-### CON-2 Open loops · ■ recorded · alert
+### CON-1 Claim check · ◇ inferred · alert
 
-1 tasks still open at session end.
+2 claims contradicted, 1 supported, 0 without evidence.
 
-- Task still open at session end: “add jitter”
+- “All tests pass.” is contradicted: Eight PR hunks were edited after the last passing test run, and the retry assertion was loosened between a failing run and the next pass. ◇
+- “Adds tests for the retry path.” is supported. ◇
+- “Using a stable key derived from the payload.” is contradicted: The added header is built from Date.now(), a per-call timestamp, not a value derived from the payload. ◇
 
 Support: claude-code full, codex full, pi partial.
 
-## Not available
+### CON-2 Open loops · ■ recorded · alert
 
-- **DEC-3 Decision trail:** LLM pass is off. Run with --llm to fill this in.
-- **CON-1 Claim check:** LLM pass is off. Run with --llm to fill this in.
-- **CON-3 Scope match:** LLM pass is off. Run with --llm to fill this in.
+1 tasks still open at session end. (+1 inferred)
+
+- Task still open at session end: “add jitter”
+- Agent noted: “The idempotency key is derived from the payload rather than being unique per attempt.” · `pi:8f0c2c7e` pi000005 · 14:52 UTC ◇
+
+Support: claude-code full, codex full, pi partial.
+
+### CON-3 Scope match · ◇ inferred · alert
+
+7 of 9 hunks trace to the ask or plan; 2 do not.
+
+- `.github/workflows/release.yml` 20-23 does not trace to the ask, plan or a decision. · `.github/workflows/release.yml` lines 20-23 ◇
+- `README.md` 4-6 does not trace to the ask, plan or a decision. · `README.md` lines 4-6 ◇
+
+Support: claude-code full, codex full, pi partial.
 
 ## Sessions
 

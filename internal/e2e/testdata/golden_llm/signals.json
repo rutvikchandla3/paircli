@@ -163,8 +163,25 @@
       "priority": "P0",
       "provenance": "derived",
       "state": "info",
-      "summary": "3 prompts across 3 sessions; first: \"Add retry with backoff to the webhook sender. Don't touch the queue.\".",
+      "summary": "3 prompts across 3 sessions; first: \"Add retry with backoff to the webhook sender. Don't touch the queue.\". (+1 inferred)",
       "findings": [
+        {
+          "summary": "Ask (condensed): Add retry with backoff to the webhook sender, and don't touch the queue.",
+          "severity": "info",
+          "provenance": "inferred",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e002",
+              "ts": "2026-09-27T14:00:05Z"
+            },
+            {
+              "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
+              "event": "pi000001",
+              "ts": "2026-09-27T14:49:05Z"
+            }
+          ]
+        },
         {
           "summary": "Add retry with backoff to the webhook sender. Don't touch the queue.",
           "severity": "info",
@@ -223,6 +240,18 @@
         "pi": "full"
       },
       "data": {
+        "ask_summary": {
+          "ask": "Add retry with backoff to the webhook sender, and don't touch the queue.",
+          "refinements": [
+            "Make the webhook sender idempotent.",
+            "Add an idempotency key header to the webhook sender."
+          ],
+          "final_scope": "The retry loop in src/webhooks/retry.ts, a retry metric, and an idempotency key on the webhook sender.",
+          "cites": [
+            "ev:claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000/d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e002",
+            "ev:pi:8f0c2c7e-0000-4000-8000-000000000482/pi000001"
+          ]
+        },
         "prompts": 3,
         "sessions": 3,
         "steering": 0
@@ -272,8 +301,8 @@
       "title": "Approved plan and plan drift",
       "priority": "P0",
       "provenance": "recorded",
-      "state": "info",
-      "summary": "Plan approved at 14:00 UTC in claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000; 1 plans proposed in total.",
+      "state": "alert",
+      "summary": "Plan approved at 14:00 UTC in claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000; 1 plans proposed in total. (+2 inferred)",
       "findings": [
         {
           "summary": "Plan approved at 14:00 UTC (4 lines).",
@@ -286,6 +315,23 @@
               "excerpt": "1. Add sendWithRetry to src/webhooks/retry.ts"
             }
           ]
+        },
+        {
+          "summary": "Planned step with no matching change: add jitter to the backoff",
+          "severity": "alert",
+          "provenance": "inferred",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_plan",
+              "ts": "2026-09-27T14:00:31Z"
+            }
+          ]
+        },
+        {
+          "summary": "Change not in the plan: `README.md` 4-6",
+          "severity": "alert",
+          "provenance": "inferred"
         }
       ],
       "support": {
@@ -1067,7 +1113,7 @@
       "findings": [
         {
           "summary": "Interrupted at 14:05 UTC while the agent was editing `src/webhooks/retry.ts`, `test/webhook.test.ts`.",
-          "severity": "alert",
+          "severity": "info",
           "anchors": [
             {
               "file": "src/webhooks/retry.ts",
@@ -1107,6 +1153,7 @@
             }
           ],
           "data": {
+            "confirmed": false,
             "kind": "interrupt"
           }
         }
@@ -1146,7 +1193,8 @@
           ],
           "data": {
             "kind": "branch_switch",
-            "off_branch_edits": 1
+            "off_branch_edits": 1,
+            "summary": "Tried a per-attempt idempotency key on the abandoned branch and went back to a stable key."
           }
         }
       ],
@@ -1170,8 +1218,46 @@
       "title": "Decision trail",
       "priority": "P1",
       "provenance": "inferred",
-      "state": "unknown",
-      "summary": "LLM pass is off. Run with --llm to fill this in.",
+      "state": "info",
+      "summary": "3 decisions shaped this diff; first: Keep the retry attempt count in Postgres.",
+      "findings": [
+        {
+          "summary": "Keep the retry attempt count in Postgres — the human picked Postgres over Redis when the agent asked (human)",
+          "severity": "info",
+          "provenance": "inferred",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_ask",
+              "ts": "2026-09-27T14:00:21Z"
+            }
+          ]
+        },
+        {
+          "summary": "Leave the queue path untouched — the first ask ruled it out (human)",
+          "severity": "info",
+          "provenance": "inferred",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e002",
+              "ts": "2026-09-27T14:00:05Z"
+            }
+          ]
+        },
+        {
+          "summary": "Use a stable idempotency key derived from the payload — the per-attempt key was tried and dropped (agent)",
+          "severity": "info",
+          "provenance": "inferred",
+          "evidence": [
+            {
+              "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
+              "event": "pi000005",
+              "ts": "2026-09-27T14:52:00Z"
+            }
+          ]
+        }
+      ],
       "support": {
         "claude-code": "full",
         "codex": "full",
@@ -1826,8 +1912,37 @@
       "title": "Claim check",
       "priority": "P0",
       "provenance": "inferred",
-      "state": "unknown",
-      "summary": "LLM pass is off. Run with --llm to fill this in.",
+      "state": "alert",
+      "summary": "2 claims contradicted, 1 supported, 0 without evidence.",
+      "findings": [
+        {
+          "summary": "“All tests pass.” is contradicted: Eight PR hunks were edited after the last passing test run, and the retry assertion was loosened between a failing run and the next pass.",
+          "severity": "alert",
+          "provenance": "inferred",
+          "data": {
+            "source": "pr_body",
+            "verdict": "contradicted"
+          }
+        },
+        {
+          "summary": "“Adds tests for the retry path.” is supported.",
+          "severity": "info",
+          "provenance": "inferred",
+          "data": {
+            "source": "pr_body",
+            "verdict": "supported"
+          }
+        },
+        {
+          "summary": "“Using a stable key derived from the payload.” is contradicted: The added header is built from Date.now(), a per-call timestamp, not a value derived from the payload.",
+          "severity": "alert",
+          "provenance": "inferred",
+          "data": {
+            "source": "final_message",
+            "verdict": "contradicted"
+          }
+        }
+      ],
       "support": {
         "claude-code": "full",
         "codex": "full",
@@ -1841,7 +1956,7 @@
       "priority": "P1",
       "provenance": "recorded",
       "state": "alert",
-      "summary": "1 tasks still open at session end.",
+      "summary": "1 tasks still open at session end. (+1 inferred)",
       "findings": [
         {
           "summary": "Task still open at session end: “add jitter”",
@@ -1850,6 +1965,18 @@
             "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
             "status": "pending"
           }
+        },
+        {
+          "summary": "Agent noted: “The idempotency key is derived from the payload rather than being unique per attempt.”",
+          "severity": "info",
+          "provenance": "inferred",
+          "evidence": [
+            {
+              "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
+              "event": "pi000005",
+              "ts": "2026-09-27T14:52:00Z"
+            }
+          ]
         }
       ],
       "support": {
@@ -1868,8 +1995,32 @@
       "title": "Scope match",
       "priority": "P1",
       "provenance": "inferred",
-      "state": "unknown",
-      "summary": "LLM pass is off. Run with --llm to fill this in.",
+      "state": "alert",
+      "summary": "7 of 9 hunks trace to the ask or plan; 2 do not.",
+      "findings": [
+        {
+          "summary": "`.github/workflows/release.yml` 20-23 does not trace to the ask, plan or a decision.",
+          "severity": "alert",
+          "provenance": "inferred",
+          "anchors": [
+            {
+              "file": ".github/workflows/release.yml",
+              "lines": "20-23"
+            }
+          ]
+        },
+        {
+          "summary": "`README.md` 4-6 does not trace to the ask, plan or a decision.",
+          "severity": "alert",
+          "provenance": "inferred",
+          "anchors": [
+            {
+              "file": "README.md",
+              "lines": "4-6"
+            }
+          ]
+        }
+      ],
       "support": {
         "claude-code": "full",
         "codex": "full",

@@ -203,10 +203,24 @@ func TestRun_Minimal(t *testing.T) {
 	if auth2.State == model.StateUnknown {
 		t.Errorf("AUTH-2 state = unknown (%s)", auth2.Summary)
 	}
-	// 30 catalog entries, minus the 3 inferred ones (DEC-3, CON-1, CON-3)
-	// that only the T26 LLM pass produces.
-	if len(res.Report.Signals) != 27 {
-		t.Errorf("signals = %d, want 27", len(res.Report.Signals))
+	// All 30 catalog entries. The 3 inferred ones (DEC-3, CON-1, CON-3) have
+	// no LLM pass here, so they stay unknown and the report lists them under
+	// "Not available".
+	if len(res.Report.Signals) != 30 {
+		t.Errorf("signals = %d, want 30", len(res.Report.Signals))
+	}
+	for _, id := range []string{"DEC-3", "CON-1", "CON-3"} {
+		s := scanFindSignal(res.Report.Signals, id)
+		if s == nil {
+			t.Errorf("%s missing from the report", id)
+			continue
+		}
+		if s.State != model.StateUnknown {
+			t.Errorf("%s state = %s, want unknown with the LLM pass off", id, s.State)
+		}
+		if !strings.Contains(s.Summary, "LLM pass is off") {
+			t.Errorf("%s summary = %q, want the --llm hint", id, s.Summary)
+		}
 	}
 
 	alerts := 0

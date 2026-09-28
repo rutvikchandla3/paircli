@@ -306,9 +306,9 @@ type failureFinding struct {
 }
 
 type checkCmdStatus struct {
-	cmd        string
-	firstFail  *model.Event
-	lastFail   *model.Event
+	cmd         string
+	firstFail   *model.Event
+	lastFail    *model.Event
 	lastSuccess *model.Event
-	succeeded  bool
+	succeeded   bool
 }

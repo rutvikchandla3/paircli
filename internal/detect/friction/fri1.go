@@ -124,7 +124,7 @@ func (d fri1) Detect(c *engine.Context) model.Signal {
 		sig.State = model.StateInfo
 		for _, stat := range hotspots {
 			finding := model.Finding{
-				Summary:  fmt.Sprintf("`%s`: %s.", stat.path, engine.Plural(stat.edits, "edit", "edits") + ", " + engine.Plural(stat.cycles, "edit-then-check cycle", "edit-then-check cycles")),
+				Summary:  fmt.Sprintf("`%s`: %s.", stat.path, engine.Plural(stat.edits, "edit", "edits")+", "+engine.Plural(stat.cycles, "edit-then-check cycle", "edit-then-check cycles")),
 				Severity: model.StateInfo,
 				Anchors: []model.Anchor{
 					{File: stat.path},

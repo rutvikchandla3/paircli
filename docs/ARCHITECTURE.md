@@ -1,138 +1,178 @@
-# Architecture
+# Architecture (v2)
 
-> **v2 in progress.** The signal pipeline is being rebuilt per
-> [`plan/README.md`](plan/README.md) and [`SIGNALS.md`](SIGNALS.md). Where this
-> document disagrees with those, they win. Settled since this was written:
-> Codex rollouts record the starting commit in `session_meta.git.commit_hash`.
-> T28 rewrites this file.
+paircli reads AI coding sessions (Claude Code, Codex CLI, Pi), correlates
+them with a PR's commits, and writes a signal report. The signal catalog and
+its ground rules are the source of truth: see
+[`SIGNALS.md`](SIGNALS.md). The frozen types and cross-package APIs are in
+[`plan/CONTRACTS.md`](plan/CONTRACTS.md); this document describes how the
+shipped code fits together.
 
-## Two capture paths
+## The pipeline
 
-**Path A — hooks installed.** paircli ships a hook/plugin per harness that
-runs *during* the session and writes a normalized event to a local event log
-(`~/.paircli/events/<harness>/<date>.jsonl`), including a `git rev-parse HEAD`
-snapshot taken at session-end and after every commit-producing shell command.
-This is the only way to get exact SHA linkage for harnesses whose own
-transcripts don't record it (confirmed true for Claude Code — see below).
+`paircli scan <pr>` calls `internal/scan.Run`, which runs the steps in order.
+The CLI (`cmd/paircli`) and the end-to-end golden test (`internal/e2e`) both
+go through this one entry point.
 
-**Path B — nothing installed, reconstruct from local transcripts.** paircli
-reads each harness's own on-disk session files directly and normalizes them
-into the same schema Path A produces, just with lower-confidence fields where
-the harness never recorded them. This is the fallback, always available,
-requires no prior setup, and is what `paircli scan <pr>` runs by default if it
-finds no hook event log.
+1. **Fetch** — `pr.Fetch` resolves the PR via `gh` (number or URL) into
+   `model.PR`: metadata, combined diff, and per-commit patches (skippable
+   with `--no-commit-patches`).
+2. **Load config** — `config.Load` reads `<repoRoot>/.paircli.json` and
+   merges it over built-in defaults. Flags override windows and LLM settings.
+3. **Discover** — `link.Discover` parses every harness's local data inside
+   the session search window (`window_before` before the PR's first commit,
+   `window_after` after its last commit; default 48h/2h): harness
+   transcripts via the `claudecode`/`codex`/`pi` parsers, plus hook records
+   via `hooklog.Read`/`hooklog.Merge` and `pi.HookRecords` (unless
+   `--no-hooks`). Every session is normalized into the same
+   `model.Session` schema, whichever capture path produced it.
+4. **Select** — `link.Select` keeps the plausible candidates: sessions whose
+   repo root and file paths overlap the PR and whose time range intersects
+   the window. The rest are counted as dropped candidates.
+5. **Attribute** — `attrib.Attribute` labels every added PR line with who
+   wrote it, and `attrib.CommitSessions` maps commit SHAs to sessions.
+6. **Finalize links** — `link.Finalize` decides which candidates are really
+   linked to this PR and with what method (`sha_exact`, `sha_ancestor`,
+   `content`, `heuristic`; see below), and lists commits no session explains.
+7. **Re-attribute over linked sessions only**, then `engine.NewContext` and
+   `engine.Run` execute the 27 deterministic detectors (see
+   `internal/detect/`, one file per signal, self-registering via `init()`).
+8. **Optional judge** — with a provider configured (`--llm anthropic` or
+   `--llm claude-cli`, or `llm.provider` in config), `judge.Run` builds a
+   fact bundle and asks the LLM for grounded judgments; the three inferred
+   signals (DEC-3, CON-1, CON-3) are recomputed from them and
+   `enrich.Apply` folds the judgments back into the deterministic signals.
+   Without a provider those three signals render as "Not available — run
+   with --llm".
+9. **Render** — `render.BuildReport` and `render.Write` produce the output
+   folder `.paircli/pr-<n>/`: `report.md`, `comment.md`, `signals.json`,
+   `authorship.json` and `sessions/<harness>-<id>.json`. Output is
+   deterministic: identical input produces byte-identical files.
+10. **Agent Trace** — `agenttrace.WriteWith` exports the same attribution as
+    a vendor-neutral Agent Trace record (`agent-trace.json`; skip with
+    `--no-agent-trace`).
+11. **Post** — with `--post`, `scan` upserts one PR comment via `gh`: the
+    comment whose body starts with `<!-- paircli -->` is updated in place,
+    otherwise a new comment is posted.
 
-Both paths converge on the same normalized `Session` schema before
-correlation runs, so the correlator never needs to know which path produced a
-given session record.
+## Three capture paths
 
-## Why not depend on agent-beacon
+**Path A — hooks installed (Claude Code, Codex).** `paircli hook install
+<harness>` registers hook commands in the harness's own config
+(`~/.claude/settings.json` for Claude Code, `$CODEX_HOME/hooks.json` for
+Codex). During a session the harness invokes `paircli hook <harness>
+<Event>`, which appends a `model.HookRecord` to
+`~/.paircli/events/<harness>/<date>.jsonl`: git HEAD snapshots (at session
+start/end, prompts, and after state-changing git commands), working-tree
+line-hash snapshots, permission decisions, rule/instruction files. Handlers
+exit 0 and print nothing — hooks never break the agent; failures go to the
+log. Hook records are merged into the parsed sessions by `hooklog.Merge`,
+which upgrades capture to `hooked` and fills in exact SHAs.
 
-We cloned and read agent-beacon's source directly (not just its docs) before
-deciding this. Findings that shaped the design:
+**Path B — Pi extension.** Pi has no external hook process; instead
+`paircli hook install pi` writes a TypeScript extension to
+`~/.pi/agent/extensions/paircli.ts`. It observes the same moments (session
+start/end, prompts, state-changing git commands) and appends a `paircli`
+entry into the Pi session file itself via `pi.appendEntry`; the Pi parser
+reads these back as hook records. Same effect as Path A, different plumbing.
 
-- Its `git.go` only ever extracts **branch + remote**, parsed straight from
-  `.git/HEAD` and `.git/config` (no shellout, worktree-aware via `commondir`).
-  It **never captures a commit SHA** anywhere in the codebase.
-- Its Claude Code, Codex, and Pi integrations are all **poll-and-parse-local-
-  files**, not live push hooks feeding structured events — despite the docs
-  table implying otherwise for some rows.
-- Claude Code's own transcript format (`~/.claude/projects/*/*.jsonl`) has no
-  commit SHA field at all. Beacon's own code comment says as much.
-- Codex's rollout file has a raw `Git map[string]interface{}` blob in
-  `session_meta` that Beacon reads but never surfaces a commit hash from —
-  worth checking directly (see Codex section) since the field may contain one.
-- **Beacon has no PR-correlation algorithm at all.** Its only "which commit is
-  this" logic (`ci/session.go`) reads `GITHUB_SHA` from CI env vars during a
-  live Actions run — it never matches a *historical* local session to a PR
-  after the fact. This is the actual novel part of paircli; nothing to import.
+**Path C — transcripts only, nothing installed.** Every harness writes its
+own session files to disk, and the parsers read them directly. This is
+always available with no prior setup but yields weaker linkage: what the
+harness never recorded (SHAs, approval steps) stays unknown, and capture is
+reported as `reconstructed` or `partial`. A session that also has hook
+records is marked `hooked`.
 
-Conclusion: their local-file parsing code (`git.go`'s HEAD/config parsing
-approach, and the general poll-local-files pattern for Claude Code sessions)
-is reusable *technique*, not a dependency. The correlation engine, the SHA
-hook, and the structured signal output are ours to build from scratch.
+All three paths converge on `model.Session` before correlation, so the rest
+of the pipeline does not care where a session came from.
 
-## PR ↔ session correlation algorithm
+## Per-harness notes
 
-Input: a PR (via `gh pr view <n> --json commits,files,createdAt,headRefName`).
+**Claude Code.** Transcripts live in `~/.claude/projects/*/*.jsonl` and
+record `sessionId`, `cwd`, `gitBranch`, timestamps, messages and tool calls
+— but no commit SHA. Without hooks, linkage is `content`/`heuristic` at
+best; hooks (`SessionStart`, `UserPromptSubmit`, `PostToolUse` on Bash,
+`PreCompact`, `Stop`, `SessionEnd`) supply exact SHAs, permission modes,
+interrupts and line-hash snapshots.
 
-1. **Exact SHA match.** For every commit SHA in the PR, look for a session
-   record (from either capture path) that recorded that exact SHA (via our
-   hook's `git rev-parse HEAD` snapshot, or a harness transcript that happens
-   to embed one — confirm Codex's `Git` blob). Match confidence: `exact`.
-2. **Heuristic fallback**, for commits/sessions with no SHA available
-   (this is the *only* path for Claude Code today): score each candidate
-   session against each unmatched commit by:
-   - repo identity match (remote URL or local path résolved to same repo) —
-     required, not just scored;
-   - branch name match against the commit's branch/PR head ref — strong
-     positive signal, not required (agents/humans rebase, rename branches);
-   - time-window overlap: session `[start,end]` intersects
-     `[commit.timestamp - N, commit.timestamp + N]`, N configurable
-     (default 2h to absorb longer edit/test loops before a commit lands).
-   Sessions above a score threshold are attached with confidence `inferred`;
-   below it, left unmatched.
-3. Anything left over becomes `unattributed_commits` in the output — always
-   surfaced, never silently dropped.
+**Codex CLI.** Rollout files record the starting commit of the session in
+`session_meta.git.commit_hash` — so a transcript-only scan can link a Codex
+session to a commit it *started from* (`sha_ancestor`), but not to commits
+made during it. Hooks (`SessionStart`, `UserPromptSubmit`, `PostToolUse` on
+Bash, `PreCompact`, `Stop`, `SessionEnd`) go into `$CODEX_HOME/hooks.json`.
+paircli never writes Codex's hook-trust approvals (`config.toml`): Codex
+withholds new hooks until the user reviews and trusts them inside Codex,
+which is why `paircli hook install codex` prints a reminder and `paircli
+doctor` reports `installed, N/M trusted`.
 
-SHA-first-then-heuristic-fallback, as scoped with the user; there was no
-existing algorithm to adopt from agent-beacon for this step.
+**Pi.** Session files live under `~/.pi/agent/sessions`; the format includes
+agent tool calls, branches and compactions. SHAs and permission/approval
+data need the paircli extension (Path B above); with it, Pi sessions link
+`sha_exact` and its partial support rows in
+[`SIGNALS.md`](SIGNALS.md#harness-support) upgrade to full.
 
-## Per-harness capture notes (v1 scope: Claude Code, Codex CLI, Pi)
+## Correlation and attribution, in brief
 
-### Claude Code
-- Path A (hooks): register `SessionStart`, `PostToolUse`, `SessionEnd` hooks
-  in `settings.json` that shell out to `paircli hook claude-code <event>`,
-  capturing `git rev-parse HEAD` at session end and after any tool call whose
-  command looks like `git commit`.
-- Path B (reconstruct): parse `~/.claude/projects/*/*.jsonl` directly —
-  fields available per Beacon's confirmed schema: `sessionId`, `cwd`,
-  `gitBranch`, `timestamp`, `version`, message/tool content. No SHA field
-  exists in these files, so Path B for Claude Code is **always** heuristic-
-  only unless our hook also ran during that session.
+**Correlation** (`internal/link`). Discovery scans the window around the
+PR's commit times. Select requires repo identity (root or origin remote)
+and path overlap, then a time-range intersection with the window. Finalize
+links a session to the PR by, in order:
 
-### Codex CLI
-- Path A (hooks): Codex's hook surface needs a live capability check against
-  the installed Codex version (`codex --help`, and its config docs) before
-  wiring — do not assume parity with Claude Code's hook system.
-- Path B (reconstruct): parse Codex's rollout JSONL
-  (`session_meta`/`turn_context`/`response_item`/`event_msg` entries per
-  Beacon's schema). **Action item before implementation**: inspect a real
-  Codex session file's `session_meta.git` map directly — Beacon reads it but
-  discards it, so it's unconfirmed whether it contains a commit SHA. If it
-  does, Codex may get `exact` confidence for free even in Path B.
+- `sha_exact` — a hook or transcript recorded a PR commit SHA at a moment
+  that places the session there (commit/prompt/stop/session_end triggers);
+- `sha_ancestor` — the session was recorded starting on top of a PR commit;
+- `content` — the session's edits produced lines that are in the PR;
+- `heuristic` — repo + branch + time-window overlap only (±2h around a
+  commit), confidence downgraded.
 
-### Pi
-- Path A (extension): Pi is extension + poll per its own model; hook into
-  its session lifecycle events (`session_start`/`session_shutdown` style
-  envelope) the same way Beacon's `pi_event` command does, adding our own
-  `git rev-parse HEAD` capture at each envelope.
-- Path B (reconstruct): parse whatever local session store the Pi extension
-  writes (confirm exact path/format at implementation time — not yet
-  inspected). No git correlation confirmed available without Path A.
+Commits with no session are surfaced as unattributed, never dropped, and
+every report shows capture coverage (AUTH-2) first — "no tests ran" is never
+confused with "we didn't see the session where tests ran".
 
-## Output: the structured signal folder
+**Attribution** (`internal/attrib`). Every added PR line is matched, in
+priority order, against a timeline of all linked sessions' events: exact
+agent edit → exact external edit → hook-snapshot-observed human line →
+loosely reformatted agent edit → fuzzy (Levenshtein) match. Labels:
+`agent`, `agent_then_human` (an agent line changed afterwards),
+`human_in_session`, `uncaptured`, and `trivial` (blank/punctuation or
+generated files, excluded from coverage ratios).
+
+## Where each piece lives
+
+| Package | Purpose |
+|---|---|
+| `internal/model` | Frozen types: sessions, events, PRs, signals, attribution, reports |
+| `internal/config` | `.paircli.json` + defaults |
+| `internal/redact` | Redaction seam (currently a no-op — see SIGNALS.md "Deferred") |
+| `internal/scan` | The pipeline as a library (`Run`) |
+| `internal/link` | Discovery, selection, commit linking |
+| `internal/attrib` | Line attribution, commit↔session map |
+| `internal/pr`, `internal/diff` | `gh` fetch and unified-diff parsing |
+| `internal/engine` | Detector registry, `Context`, signal catalog metadata, harness support table |
+| `internal/detect/<question>` | One detector file per signal, self-registering |
+| `internal/judge` | Fact bundle, prompts, response validation → `model.Judgments` |
+| `internal/enrich` | Folds judgments into deterministic signals |
+| `internal/llm` | Providers: Anthropic API, `claude` CLI |
+| `internal/claudecode`, `internal/codex`, `internal/pi` | Per-harness transcript parsers + hook install/handlers (Pi: extension installer) |
+| `internal/hooklog` | Hook record log: append, read, merge into sessions |
+| `internal/classify` | Command, path, check and secret-shape classification |
+| `internal/render` | `report.md`, `comment.md`, `signals.json`, `authorship.json`, session files |
+| `internal/agenttrace` | Agent Trace export |
+| `internal/gitinfo` | Git helpers (repo root, HEAD, remotes) |
+| `internal/testkit` | Session/PR/context builders for tests |
+| `internal/e2e` | Golden end-to-end scenario (`testdata/golden/`) |
+| `cmd/paircli` | CLI: `scan`, `hook`, `doctor`, `version` |
+
+## Output folder
 
 ```
 .paircli/pr-<number>/
-  report.md              # human-readable summary, the primary artifact
-  signals.json            # full structured signal set, see SIGNALS.md
-  sessions/
-    <harness>-<session_id>.json   # normalized session record
-  raw/                     # optional: pointers (not copies) to source
-                            # transcript paths on disk, for drill-in
+  report.md                 # human-readable report — read this first
+  comment.md                # PR comment body (--post upserts it)
+  signals.json              # full structured report, the machine contract
+  authorship.json           # per-file, per-line attribution
+  agent-trace.json          # vendor-neutral Agent Trace record
+  sessions/<harness>-<id>.json   # one normalized session record per linked session
 ```
 
-`signals.json` is the machine-readable contract other tooling (a PR-review
-UI, a bot comment, CI check) can build on; `report.md` is what a human reads
-first. Every session record and every top-level signal carries the
-`confidence` field defined in SIGNALS.md.
-
-## CLI shape (v1)
-
-```
-paircli scan <pr-number-or-url>   # run both capture paths as needed, correlate, write output folder
-paircli hook install <harness>    # install Path-A hooks for one harness
-paircli hook <harness> <event>    # internal: invoked BY the installed hook
-paircli doctor                    # report which harnesses have hooks installed / are reconstructable on this machine
-```
+`.paircli/` is gitignored. Session paths outside the repo are rendered
+through `engine.Home` so reports never contain absolute home paths.

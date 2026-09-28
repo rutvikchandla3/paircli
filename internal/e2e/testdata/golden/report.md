@@ -285,6 +285,12 @@ Support: claude-code full, codex partial, pi partial.
 
 Support: claude-code full, codex full, pi partial.
 
+## Not available
+
+- **DEC-3 Decision trail:** LLM pass is off. Run with --llm to fill this in.
+- **CON-1 Claim check:** LLM pass is off. Run with --llm to fill this in.
+- **CON-3 Scope match:** LLM pass is off. Run with --llm to fill this in.
+
 ## Sessions
 
 | Session | Link | Capture | Start | End | Models | PR lines |

@@ -118,24 +118,20 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	sigs := engine.Run(ec)
 
 	// T26: LLM pass. Without a provider the three inferred signals (DEC-3,
-	// CON-1, CON-3) hold nothing a reviewer can act on, so they stay out of the
-	// report. With one, the judge turns the deterministic signals and the
-	// session facts into model.Judgments, the inferred signals are recomputed
-	// from it, and the judgments are folded back into the other signals.
-	if o.LLM == nil {
-		sigs = dropIDs(sigs, inferredIDs...)
-	} else {
+	// CON-1, CON-3) stay unknown, and the report lists them under "Not
+	// available" with the hint to run with --llm. With one, the judge turns the
+	// deterministic signals and the session facts into model.Judgments, the
+	// inferred signals are recomputed from it, and the judgments are folded
+	// back into the other signals.
+	if o.LLM != nil {
 		j, err := judge.Run(ctx, o.LLM, ec, sigs, cfg)
 		if err != nil {
-			// Keep the deterministic report: note the failure on AUTH-2 and
-			// leave the judgments unset, so nothing inferred is reported.
+			// Keep the deterministic output and note the failure on AUTH-2.
 			sigs = noteLLMError(sigs, err.Error())
 			j = nil
 		}
 		ec.Judgments = j
-		if j == nil {
-			sigs = dropIDs(sigs, inferredIDs...)
-		} else {
+		if j != nil {
 			sigs = replaceByID(sigs, engine.RunIDs(ec, inferredIDs...))
 			sigs = enrich.Apply(ec, sigs)
 		}
@@ -174,22 +170,6 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 
 // inferredIDs are the three signals only the LLM pass produces (T26).
 var inferredIDs = []string{"DEC-3", "CON-1", "CON-3"}
-
-// dropIDs returns sigs without the named signals.
-func dropIDs(sigs []model.Signal, ids ...string) []model.Signal {
-	drop := make(map[string]bool, len(ids))
-	for _, id := range ids {
-		drop[id] = true
-	}
-	out := make([]model.Signal, 0, len(sigs))
-	for _, s := range sigs {
-		if drop[s.ID] {
-			continue
-		}
-		out = append(out, s)
-	}
-	return out
-}
 
 // replaceByID returns sigs with every signal in repl swapped in for the signal
 // of the same id, in place; a signal sigs does not carry is appended.

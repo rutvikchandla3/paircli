@@ -1165,6 +1165,20 @@
       }
     },
     {
+      "id": "DEC-3",
+      "question": "decisions",
+      "title": "Decision trail",
+      "priority": "P1",
+      "provenance": "inferred",
+      "state": "unknown",
+      "summary": "LLM pass is off. Run with --llm to fill this in.",
+      "support": {
+        "claude-code": "full",
+        "codex": "full",
+        "pi": "partial"
+      }
+    },
+    {
       "id": "FRI-1",
       "question": "friction",
       "title": "Churn hotspots",
@@ -1807,6 +1821,20 @@
       }
     },
     {
+      "id": "CON-1",
+      "question": "consistency",
+      "title": "Claim check",
+      "priority": "P0",
+      "provenance": "inferred",
+      "state": "unknown",
+      "summary": "LLM pass is off. Run with --llm to fill this in.",
+      "support": {
+        "claude-code": "full",
+        "codex": "full",
+        "pi": "partial"
+      }
+    },
+    {
       "id": "CON-2",
       "question": "consistency",
       "title": "Open loops",
@@ -1832,6 +1860,20 @@
       "data": {
         "open_tasks": 1,
         "todo_comments": 0
+      }
+    },
+    {
+      "id": "CON-3",
+      "question": "consistency",
+      "title": "Scope match",
+      "priority": "P1",
+      "provenance": "inferred",
+      "state": "unknown",
+      "summary": "LLM pass is off. Run with --llm to fill this in.",
+      "support": {
+        "claude-code": "full",
+        "codex": "full",
+        "pi": "partial"
       }
     }
   ]

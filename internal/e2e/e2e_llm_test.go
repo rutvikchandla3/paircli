@@ -249,12 +249,20 @@ func TestE2E_WithLLM_Failure(t *testing.T) {
 		t.Errorf("llm calls = %d, want %d (one per judge job)", got, want)
 	}
 
-	if got, want := len(res.Report.Signals), 27; got != want {
-		t.Errorf("signals = %d, want %d: a failed LLM pass reports no inferred signals", got, want)
+	if got, want := len(res.Report.Signals), 30; got != want {
+		t.Errorf("signals = %d, want %d: a failed LLM pass keeps the deterministic report", got, want)
 	}
 	for _, id := range []string{"DEC-3", "CON-1", "CON-3"} {
-		if sig := e2eFindSignal(res.Report, id); sig != nil {
-			t.Errorf("%s present (%s) although the LLM pass failed", id, sig.State)
+		sig := e2eFindSignal(res.Report, id)
+		if sig == nil {
+			t.Errorf("%s missing from the report", id)
+			continue
+		}
+		if sig.State != model.StateUnknown {
+			t.Errorf("%s state = %s, want unknown after a failed LLM pass", id, sig.State)
+		}
+		if len(sig.Findings) != 0 {
+			t.Errorf("%s has %d findings, want none after a failed LLM pass", id, len(sig.Findings))
 		}
 	}
 

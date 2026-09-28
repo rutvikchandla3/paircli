@@ -114,13 +114,39 @@ func globMatch(pattern, path string, pi, pai int) bool {
 	return globMatch(pattern, path, pi+1, pai+1)
 }
 
+// matchesCharClass reports whether ch matches a "[...]" class, following
+// path.Match: a leading '!' or '^' negates, "a-z" is an inclusive range, and
+// any other character is literal. A '-' at either end is literal.
 func matchesCharClass(class string, ch byte) bool {
-	// Simple character class matching
-	// TODO: Support ranges like a-z
-	for _, c := range class {
-		if byte(c) == ch {
-			return true
+	if class == "" {
+		return false
+	}
+
+	negated := false
+	switch class[0] {
+	case '!', '^':
+		negated = true
+		class = class[1:]
+	}
+
+	matched := false
+	for i := 0; i < len(class); i++ {
+		if i+2 < len(class) && class[i+1] == '-' {
+			if class[i] <= ch && ch <= class[i+2] {
+				matched = true
+				break
+			}
+			i += 2
+			continue
+		}
+		if class[i] == ch {
+			matched = true
+			break
 		}
 	}
-	return false
+
+	if negated {
+		return !matched
+	}
+	return matched
 }

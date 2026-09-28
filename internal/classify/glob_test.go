@@ -77,6 +77,54 @@ func TestGlob(t *testing.T) {
 			path:    "src/test/unit/utils.ts",
 			want:    true,
 		},
+		{
+			name:    "character class range matches",
+			pattern: "src/[a-c].go",
+			path:    "src/b.go",
+			want:    true,
+		},
+		{
+			name:    "character class range misses outside",
+			pattern: "src/[a-c].go",
+			path:    "src/d.go",
+			want:    false,
+		},
+		{
+			name:    "character class digit range",
+			pattern: "v[0-9].md",
+			path:    "v7.md",
+			want:    true,
+		},
+		{
+			name:    "negated class excludes",
+			pattern: "src/[!a].go",
+			path:    "src/a.go",
+			want:    false,
+		},
+		{
+			name:    "negated class includes",
+			pattern: "src/[!a].go",
+			path:    "src/b.go",
+			want:    true,
+		},
+		{
+			name:    "caret negation",
+			pattern: "src/[^a].go",
+			path:    "src/a.go",
+			want:    false,
+		},
+		{
+			name:    "trailing dash is literal",
+			pattern: "src/[a-].go",
+			path:    "src/-.go",
+			want:    true,
+		},
+		{
+			name:    "literal class still matches",
+			pattern: "src/[ab].go",
+			path:    "src/b.go",
+			want:    true,
+		},
 	}
 
 	for _, tt := range tests {

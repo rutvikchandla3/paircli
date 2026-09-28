@@ -1,6 +1,7 @@
 package friction
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rutvikchandla3/paircli/internal/model"
@@ -39,7 +40,7 @@ func TestFRI4_SearchFollowedByEdit(t *testing.T) {
 	}
 
 	finding := sig.Findings[0]
-	if !contains(finding.Summary, "Searched") || !contains(finding.Summary, "edits followed") {
+	if !strings.Contains(finding.Summary, "Searched") || !strings.Contains(finding.Summary, "edits followed") {
 		t.Errorf("Summary = %q, should mention search and edits", finding.Summary)
 	}
 
@@ -85,7 +86,7 @@ func TestFRI4_WindowLimit(t *testing.T) {
 	}
 
 	finding := sig.Findings[0]
-	if contains(finding.Summary, "edits followed") {
+	if strings.Contains(finding.Summary, "edits followed") {
 		t.Errorf("Summary should not mention edits when outside window: %q", finding.Summary)
 	}
 }
@@ -117,7 +118,7 @@ func TestFRI4_DocsMCP(t *testing.T) {
 	}
 
 	finding := sig.Findings[0]
-	if !contains(finding.Summary, "Looked up docs") || !contains(finding.Summary, "docs") {
+	if !strings.Contains(finding.Summary, "Looked up docs") || !strings.Contains(finding.Summary, "docs") {
 		t.Errorf("Summary = %q, should mention docs", finding.Summary)
 	}
 
@@ -165,17 +166,4 @@ func TestFRI4_NoSessions(t *testing.T) {
 	if sig.State != model.StateUnknown {
 		t.Errorf("State = %q, want unknown", sig.State)
 	}
-}
-
-// Helper function
-func contains(s, substr string) bool {
-	if len(s) == 0 || len(substr) == 0 {
-		return false
-	}
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

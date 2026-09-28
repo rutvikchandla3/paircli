@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rutvikchandla3/paircli/internal/agenttrace"
 	"github.com/rutvikchandla3/paircli/internal/attrib"
 	"github.com/rutvikchandla3/paircli/internal/config"
 	"github.com/rutvikchandla3/paircli/internal/engine"
@@ -42,6 +43,7 @@ type Options struct {
 	Config          *config.Config // nil → config.Load(repo root)
 	NoHooks         bool           // skip hook-log records
 	NoCommitPatches bool           // skip per-commit patches
+	NoAgentTrace    bool           // skip agent-trace.json
 	Post            bool           // upsert the PR comment
 	IncludePrompts  bool           // let comment.md carry prompt text
 	LLM             llm.Provider   // nil = LLM pass off (T26 uses it)
@@ -158,7 +160,15 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 		return nil, err
 	}
 
-	// 11. Optionally upsert the PR comment.
+	// 11. Agent Trace record (T27): the same attribution in the vendor-neutral
+	// format other tools read (https://agent-trace.dev/).
+	if !o.NoAgentTrace {
+		if err := agenttrace.WriteWith(outDir, agenttrace.Options{GeneratedAt: now, Version: o.Version}, p, attr, res.Sessions); err != nil {
+			return nil, err
+		}
+	}
+
+	// 12. Optionally upsert the PR comment.
 	if o.Post {
 		if err := postComment(o.Runner, o.Repo, o.Number, filepath.Join(outDir, "comment.md")); err != nil {
 			return nil, err

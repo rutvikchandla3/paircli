@@ -187,6 +187,7 @@ export default function (pi: ExtensionAPI) {
 			event: string,
 			trigger: string,
 			extra: Record<string, unknown> = {},
+			priorError?: string,
 		) => {
 			try {
 				const rec: Record<string, unknown> = {
@@ -205,6 +206,9 @@ export default function (pi: ExtensionAPI) {
 				} else {
 					rec.head_sha = h.sha;
 					rec.branch = h.branch;
+					// Only surface the snapshot failure when git itself was fine:
+					// one `error` field, and the head failure is the more useful one.
+					if (priorError) rec.error = priorError;
 				}
 				pi.appendEntry("paircli", rec);
 			} catch {
@@ -223,12 +227,7 @@ export default function (pi: ExtensionAPI) {
 				}
 				const extra: Record<string, unknown> = {};
 				if (files.length > 0) extra.snapshot = files;
-				emit(cwd, event, trigger, extra);
-				if (snapErr) {
-					// Best effort only; head()'s own error (if any) already won
-					// the `error` field inside emit()'s record, which is fine --
-					// either failure means the record still carries useful data.
-				}
+				emit(cwd, event, trigger, extra, snapErr);
 			} catch {
 				// never throw from the extension
 			}

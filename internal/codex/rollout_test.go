@@ -469,17 +469,3 @@ func TestParse_PlanTodoQuestion(t *testing.T) {
 		t.Errorf("answer = %q", q.Items[0].Answer)
 	}
 }
-
-func TestOwnerRepo(t *testing.T) {
-	cases := []struct{ url, want string }{
-		{"git@github.com:acme/shop.git", "acme/shop"},
-		{"https://github.com/acme/shop.git", "acme/shop"},
-		{"https://github.com/acme/shop", "acme/shop"},
-		{"ssh://git@github.com/acme/shop.git", "acme/shop"},
-	}
-	for _, c := range cases {
-		if got := ownerRepo(c.url); got != c.want {
-			t.Errorf("ownerRepo(%q) = %q, want %q", c.url, got, c.want)
-		}
-	}
-}

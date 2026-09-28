@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rutvikchandla3/paircli/internal/gitinfo"
 	"github.com/rutvikchandla3/paircli/internal/model"
 )
 
@@ -103,22 +104,6 @@ func rolloutDiscoverIn(dir string, since time.Time, match func(name string) bool
 		return nil, err
 	}
 	return out, nil
-}
-
-// ownerRepo parses "owner/repo" out of common git remote URL forms
-// (git@github.com:o/r.git, https://github.com/o/r(.git), ssh://git@github.com/o/r.git).
-//
-// This duplicates internal/gitinfo's unexported ownerRepoFromURL; T10 adds an
-// exported gitinfo.OwnerRepoFromURL and T24 may switch this package to it.
-func ownerRepo(url string) string {
-	url = strings.TrimSuffix(strings.TrimSpace(url), ".git")
-	if idx := strings.Index(url, "github.com:"); idx != -1 {
-		return url[idx+len("github.com:"):]
-	}
-	if idx := strings.Index(url, "github.com/"); idx != -1 {
-		return url[idx+len("github.com/"):]
-	}
-	return ""
 }
 
 // rolloutLine is one decoded JSONL line: {"timestamp","type","payload"}.
@@ -361,7 +346,7 @@ func (p *rolloutParser) handleSessionMeta(ln rolloutLine) {
 	branch := rolloutStr(git, "branch")
 	p.session.StartSHA = sha
 	p.session.Branch = branch
-	p.session.RepoRemote = ownerRepo(rolloutStr(git, "repository_url"))
+	p.session.RepoRemote = gitinfo.OwnerRepoFromURL(rolloutStr(git, "repository_url"))
 	p.add(model.Event{
 		Kind:    model.KindGitHead,
 		TS:      ln.TS,

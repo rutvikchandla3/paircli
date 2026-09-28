@@ -172,7 +172,11 @@ func (d fri1) Detect(c *engine.Context) model.Signal {
 		}
 	}
 	sort.Slice(dataFiles, func(i, j int) bool {
-		return dataFiles[i]["edits"].(int) > dataFiles[j]["edits"].(int)
+		ei, ej := dataFiles[i]["edits"].(int), dataFiles[j]["edits"].(int)
+		if ei != ej {
+			return ei > ej
+		}
+		return dataFiles[i]["path"].(string) < dataFiles[j]["path"].(string)
 	})
 
 	sig.Data = map[string]any{

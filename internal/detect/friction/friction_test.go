@@ -1,6 +1,7 @@
 package friction
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/rutvikchandla3/paircli/internal/engine"
@@ -173,6 +174,37 @@ func TestFRI2_LoopBrokenBySuccess(t *testing.T) {
 	// No loop since the failure chain was broken
 	if sig.State != model.StateClear {
 		t.Errorf("expected StateClear when loop is broken by success, got %s", sig.State)
+	}
+}
+
+func TestFRI2_LoopReportsActualCount(t *testing.T) {
+	// 5 consecutive failures, unbroken at session end, must report n=5, not a hardcoded 3.
+	s := testkit.Session(model.HarnessClaudeCode, "s1").
+		Prompt("start").
+		Run("go test ./...", 1, "fail").
+		Run("go test ./...", 1, "fail").
+		Run("go test ./...", 1, "fail").
+		Run("go test ./...", 1, "fail").
+		Run("go test ./...", 1, "fail").
+		Build()
+
+	ctx := testkit.Ctx(testkit.PR("acme/shop", 42).Build(), s)
+	sig := engine.RunIDs(ctx, "FRI-2")[0]
+
+	if sig.State != model.StateAlert {
+		t.Fatalf("expected StateAlert, got %s", sig.State)
+	}
+	found := false
+	for _, f := range sig.Findings {
+		if strings.Contains(f.Summary, "failed 5 times in a row") {
+			found = true
+		}
+		if strings.Contains(f.Summary, "failed 3 times in a row") {
+			t.Errorf("finding under-reports the run length: %q", f.Summary)
+		}
+	}
+	if !found {
+		t.Errorf("expected a finding reporting 5 failures in a row, got: %+v", sig.Findings)
 	}
 }
 

@@ -2,6 +2,7 @@ package friction
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/rutvikchandla3/paircli/internal/classify"
@@ -26,9 +27,11 @@ func (d fri2) Detect(c *engine.Context) model.Signal {
 	var timeouts []*timeoutFinding
 	var failures []*failureFinding
 
-	// First pass: find loops in each session
+	// First pass: find loops in each session. A loop is a run of >=3
+	// consecutive failing executions of the same normalized command, still
+	// unbroken (no success of it yet) at session end.
 	for _, session := range c.Sessions {
-		sessionCmdFailures := make(map[string][]*cmdFailureEvent) // cmd -> [{ts, event}]
+		sessionCmdFailures := make(map[string][]*cmdFailureEvent) // cmd -> current run
 
 		for i, e := range session.Events {
 			if e.Kind != model.KindCommand || e.Command == nil {
@@ -41,46 +44,27 @@ func (d fri2) Detect(c *engine.Context) model.Signal {
 			if cmd.Status == model.CmdFailed {
 				sessionCmdFailures[normalized] = append(sessionCmdFailures[normalized], &cmdFailureEvent{ts: e.TS, e: &session.Events[i]})
 			} else if cmd.Status == model.CmdOK {
-				// Clear the failure chain for this command
 				sessionCmdFailures[normalized] = nil
 			}
 		}
 
-		// Check for loops (3+ consecutive failures)
-		for normalized, failures := range sessionCmdFailures {
-			if len(failures) >= 3 {
-				// Check if there are consecutive failures
-				for start := 0; start <= len(failures)-3; start++ {
-					end := start + 3
-					if end <= len(failures) {
-						// Check if these are truly consecutive (no success in between)
-						isConsecutive := true
-						firstFail := failures[start]
-						lastFail := failures[end-1]
-
-						// Verify no success of this command between first and last
-						for _, sf := range failures[start : end-1] {
-							if !sf.ts.Before(lastFail.ts) {
-								isConsecutive = false
-								break
-							}
-						}
-
-						if isConsecutive {
-							loops = append(loops, &loopFinding{
-								cmd:        normalized,
-								normalized: normalized,
-								count:      end - start,
-								first:      firstFail.e,
-								last:       lastFail.e,
-								session:    session,
-							})
-							break // Only report once per command in this session
-						}
-					}
-				}
+		// Report whatever run is still active (unbroken) at session end.
+		// Map iteration order is nondeterministic, so collect then sort.
+		var sessionLoops []*loopFinding
+		for normalized, run := range sessionCmdFailures {
+			if len(run) >= 3 {
+				sessionLoops = append(sessionLoops, &loopFinding{
+					cmd:        normalized,
+					normalized: normalized,
+					count:      len(run),
+					first:      run[0].e,
+					last:       run[len(run)-1].e,
+					session:    session,
+				})
 			}
 		}
+		sort.Slice(sessionLoops, func(i, j int) bool { return sessionLoops[i].normalized < sessionLoops[j].normalized })
+		loops = append(loops, sessionLoops...)
 	}
 
 	// Second pass: find timeouts and harness failures
@@ -137,8 +121,15 @@ func (d fri2) Detect(c *engine.Context) model.Signal {
 		}
 	}
 
-	// Unresolved = failed but never succeeded
-	for _, status := range seenCheckCommands {
+	// Unresolved = failed but never succeeded. Map iteration order is
+	// nondeterministic, so sort by normalized command before appending.
+	unresolvedCmds := make([]string, 0, len(seenCheckCommands))
+	for cmd := range seenCheckCommands {
+		unresolvedCmds = append(unresolvedCmds, cmd)
+	}
+	sort.Strings(unresolvedCmds)
+	for _, cmd := range unresolvedCmds {
+		status := seenCheckCommands[cmd]
 		if status.firstFail != nil && !status.succeeded {
 			unresolvedChecks = append(unresolvedChecks, &unresolvedCheckFinding{
 				cmd: status.cmd,

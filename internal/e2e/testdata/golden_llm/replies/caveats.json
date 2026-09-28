@@ -1,0 +1,9 @@
+{
+  "caveats": [
+    {
+      "text": "The idempotency key is derived from the payload rather than being unique per attempt.",
+      "cites": ["ev:pi:8f0c2c7e-0000-4000-8000-000000000482/pi000005"]
+    }
+  ],
+  "lost_constraints": []
+}

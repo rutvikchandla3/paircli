@@ -1,0 +1,84 @@
+{
+  "scope": [
+    {
+      "file": "src/webhooks/retry.ts",
+      "lines": "1-14",
+      "traced": true,
+      "trace_to": "Step 1 of the approved plan: add sendWithRetry",
+      "cites": ["file:src/webhooks/retry.ts:1-14", "ev:claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000/toolu_plan"]
+    },
+    {
+      "file": "src/webhooks/sender.ts",
+      "lines": "12-15",
+      "traced": true,
+      "trace_to": "The ask to make the webhook sender idempotent",
+      "cites": ["file:src/webhooks/sender.ts:12-15", "ev:pi:8f0c2c7e-0000-4000-8000-000000000482/pi000001"]
+    },
+    {
+      "file": "src/metrics.ts",
+      "lines": "1-4",
+      "traced": true,
+      "trace_to": "Step 3 of the approved plan: add a metrics counter for retries",
+      "cites": ["file:src/metrics.ts:1-4", "ev:claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000/toolu_plan"]
+    },
+    {
+      "file": "test/webhook.test.ts",
+      "lines": "8-10",
+      "traced": true,
+      "trace_to": "Step 2 of the approved plan: wire the sender through the retry loop",
+      "cites": ["file:test/webhook.test.ts:8-10", "ev:claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000/toolu_plan"]
+    },
+    {
+      "file": "test/retry.test.ts",
+      "lines": "1-4",
+      "traced": true,
+      "trace_to": "The ask to add retry with backoff",
+      "cites": ["file:test/retry.test.ts:1-4"]
+    },
+    {
+      "file": "migrations/0042_retry.sql",
+      "lines": "1-2",
+      "traced": true,
+      "trace_to": "The Postgres decision: the attempt count lives in the database",
+      "cites": ["file:migrations/0042_retry.sql:1-2", "ev:claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000/toolu_ask"]
+    },
+    {
+      "file": "package.json",
+      "lines": "10-12",
+      "traced": true,
+      "trace_to": "Step 1 of the approved plan: p-retry supports the retry loop",
+      "cites": ["file:package.json:10-12", "ev:claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000/toolu_plan"]
+    },
+    {
+      "file": ".github/workflows/release.yml",
+      "lines": "20-23",
+      "traced": false,
+      "trace_to": "",
+      "cites": ["file:.github/workflows/release.yml:20-23"]
+    },
+    {
+      "file": "README.md",
+      "lines": "4-6",
+      "traced": false,
+      "trace_to": "",
+      "cites": ["file:README.md:4-6"]
+    }
+  ],
+  "plan_drift": [
+    {
+      "kind": "missing_step",
+      "text": "add jitter to the backoff",
+      "file": "src/webhooks/retry.ts",
+      "lines": "1-14",
+      "cites": ["ev:claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000/toolu_plan", "file:src/webhooks/retry.ts:1-14"]
+    },
+    {
+      "kind": "unplanned_change",
+      "text": "Documentation for RETRY_MAX was never planned or asked for.",
+      "file": "README.md",
+      "lines": "4-6",
+      "cites": ["file:README.md:4-6"]
+    }
+  ],
+  "rule_violations": []
+}

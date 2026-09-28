@@ -1,0 +1,25 @@
+{
+  "claims": [
+    {
+      "claim": "All tests pass.",
+      "source": "pr_body",
+      "verdict": "contradicted",
+      "reason": "Eight PR hunks were edited after the last passing test run, and the retry assertion was loosened between a failing run and the next pass.",
+      "cites": ["sig:VER-2", "sig:VER-4"]
+    },
+    {
+      "claim": "Adds tests for the retry path.",
+      "source": "pr_body",
+      "verdict": "supported",
+      "reason": "The diff adds test/retry.test.ts, which imports the new sendWithRetry.",
+      "cites": ["file:test/retry.test.ts:1-4"]
+    },
+    {
+      "claim": "Using a stable key derived from the payload.",
+      "source": "final_message",
+      "verdict": "contradicted",
+      "reason": "The added header is built from Date.now(), a per-call timestamp, not a value derived from the payload.",
+      "cites": ["file:src/webhooks/sender.ts:12-15"]
+    }
+  ]
+}

@@ -1,0 +1,180 @@
+{
+  "version": "0.1.0",
+  "id": "cefc6685-57a6-5cd1-8dbc-37fd25377565",
+  "timestamp": "2026-09-27T15:00:00Z",
+  "vcs": {
+    "type": "git",
+    "revision": "bbbbbbb2222222222222222222222222222222"
+  },
+  "tool": {
+    "name": "paircli",
+    "version": "0.2.0"
+  },
+  "files": [
+    {
+      "path": "src/webhooks/retry.ts",
+      "conversations": [
+        {
+          "url": "claude-code:ab12cd34ef567890",
+          "contributor": {
+            "type": "ai",
+            "model_id": "anthropic/claude-opus-4-5-20251101"
+          },
+          "ranges": [
+            {
+              "start_line": 40,
+              "end_line": 41
+            }
+          ],
+          "related": [
+            {
+              "type": "harness",
+              "url": "claude-code"
+            },
+            {
+              "type": "transcript",
+              "url": "/fixtures/ab12cd34ef567890.jsonl"
+            }
+          ]
+        },
+        {
+          "url": "claude-code:ab12cd34ef567890",
+          "contributor": {
+            "type": "mixed",
+            "model_id": "anthropic/claude-opus-4-5-20251101"
+          },
+          "ranges": [
+            {
+              "start_line": 43,
+              "end_line": 43
+            }
+          ],
+          "related": [
+            {
+              "type": "harness",
+              "url": "claude-code"
+            },
+            {
+              "type": "transcript",
+              "url": "/fixtures/ab12cd34ef567890.jsonl"
+            }
+          ]
+        },
+        {
+          "url": "claude-code:ab12cd34ef567890",
+          "contributor": {
+            "type": "human"
+          },
+          "ranges": [
+            {
+              "start_line": 44,
+              "end_line": 44
+            }
+          ],
+          "related": [
+            {
+              "type": "harness",
+              "url": "claude-code"
+            },
+            {
+              "type": "transcript",
+              "url": "/fixtures/ab12cd34ef567890.jsonl"
+            }
+          ]
+        },
+        {
+          "contributor": {
+            "type": "unknown"
+          },
+          "ranges": [
+            {
+              "start_line": 45,
+              "end_line": 45
+            }
+          ]
+        },
+        {
+          "url": "codex:019f0000aabb",
+          "contributor": {
+            "type": "ai",
+            "model_id": "openai/gpt-5-codex"
+          },
+          "ranges": [
+            {
+              "start_line": 46,
+              "end_line": 46
+            }
+          ],
+          "related": [
+            {
+              "type": "harness",
+              "url": "codex"
+            },
+            {
+              "type": "transcript",
+              "url": "/fixtures/019f0000aabb.jsonl"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "path": "src/webhooks/sender.ts",
+      "conversations": [
+        {
+          "url": "pi:pi-session-1",
+          "contributor": {
+            "type": "human"
+          },
+          "ranges": [
+            {
+              "start_line": 10,
+              "end_line": 11
+            }
+          ],
+          "related": [
+            {
+              "type": "harness",
+              "url": "pi"
+            },
+            {
+              "type": "transcript",
+              "url": "/fixtures/pi-session-1.jsonl"
+            }
+          ]
+        },
+        {
+          "url": "codex:019f0000aabb",
+          "contributor": {
+            "type": "ai",
+            "model_id": "openai/gpt-5-codex"
+          },
+          "ranges": [
+            {
+              "start_line": 12,
+              "end_line": 12
+            }
+          ],
+          "related": [
+            {
+              "type": "harness",
+              "url": "codex"
+            },
+            {
+              "type": "transcript",
+              "url": "/fixtures/019f0000aabb.jsonl"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "dev.paircli": {
+      "mime_type": "application/vnd.agent-trace.record+json",
+      "pr": 482,
+      "repo": "acme/shop",
+      "url": "https://github.com/acme/shop/pull/482"
+    }
+  }
+}

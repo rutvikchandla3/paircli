@@ -30,16 +30,18 @@ var harnessTable = map[string]harnessHooks{
 		Run:       claudecode.RunHookEvent,
 	},
 	"codex": {
-		Install:   codex.InstallHooks,
-		Uninstall: codex.UninstallHooks,
-		Installed: codex.HooksInstalled,
-		Run:       codex.RunHookEvent,
+		Install:        codex.InstallHooks,
+		Uninstall:      codex.UninstallHooks,
+		Installed:      codex.HooksInstalled,
+		Run:            codex.RunHookEvent,
+		InstallMessage: codex.InstallMessage,
 	},
 	"pi": {
-		Install:   pi.InstallHooks,
-		Uninstall: pi.UninstallHooks,
-		Installed: pi.HooksInstalled,
-		Run:       pi.RunHookEvent,
+		Install:        pi.InstallHooks,
+		Uninstall:      pi.UninstallHooks,
+		Installed:      pi.HooksInstalled,
+		Run:            pi.RunHookEvent,
+		InstallMessage: pi.InstallMessage,
 	},
 }
 

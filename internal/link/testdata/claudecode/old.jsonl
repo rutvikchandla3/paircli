@@ -1,0 +1,1 @@
+{"type":"user","uuid":"ou1","sessionId":"cc-old","timestamp":"2026-09-27T14:10:00.000Z","cwd":"/work/shop","gitBranch":"feat/retry","version":"2.1.283","promptSource":"typed","message":{"role":"user","content":"This session should never be discovered: its file mtime predates the window."}}

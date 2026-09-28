@@ -1,0 +1,2 @@
+{"type":"user","uuid":"u1","sessionId":"cc-resume","timestamp":"2026-09-27T14:05:00.000Z","cwd":"/work/shop","gitBranch":"feat/retry","version":"2.1.283","promptSource":"typed","message":{"role":"user","content":"DUPLICATE: should be dropped, first occurrence wins."}}
+{"type":"user","uuid":"u2","sessionId":"cc-resume","timestamp":"2026-09-27T14:05:05.000Z","cwd":"/work/shop","gitBranch":"feat/retry","version":"2.1.283","promptSource":"typed","message":{"role":"user","content":"Continue after resume."}}

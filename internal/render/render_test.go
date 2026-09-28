@@ -431,6 +431,47 @@ func TestWrite_FilesAndStaleCleanup(t *testing.T) {
 	}
 }
 
+func TestReportMarkdown_FindingCap(t *testing.T) {
+	rep := BuildReport(buildInput())
+	var findings []model.Finding
+	for i := 0; i < 18; i++ {
+		findings = append(findings, model.Finding{Summary: "finding", Severity: model.StateInfo})
+	}
+	rep.Signals = []model.Signal{signalOf("VER-2", model.StateAlert, "Many hunks.", findings...)}
+	got := ReportMarkdown(rep)
+	if !strings.Contains(got, "- … and 3 more in signals.json") {
+		t.Errorf("missing cap line:\n%s", got)
+	}
+	if n := strings.Count(got, "\n- finding"); n != maxSignalFindings {
+		t.Errorf("rendered %d finding lines in the signal section, want %d", n, maxSignalFindings)
+	}
+	alertFindings := strings.Count(got, "\n  - finding")
+	if alertFindings != maxAlertFindings {
+		t.Errorf("Alerts rendered %d findings, want %d", alertFindings, maxAlertFindings)
+	}
+}
+
+func TestReportMarkdown_UnknownOnlyInNotAvailable(t *testing.T) {
+	rep := BuildReport(buildInput())
+	rep.Signals = []model.Signal{
+		signalOf("VER-2", model.StateUnknown, "No verification recorded."),
+		signalOf("AUTH-1", model.StateClear, "All lines trace to a captured edit."),
+	}
+	got := ReportMarkdown(rep)
+	if !strings.Contains(got, "## Not available\n\n- **VER-2 Verification freshness:** No verification recorded.") {
+		t.Errorf("unknown signal missing from Not available:\n%s", got)
+	}
+	if strings.Contains(got, "### VER-2") {
+		t.Errorf("unknown signal must not get its own section:\n%s", got)
+	}
+	if !strings.Contains(got, "### AUTH-1 Line-level authorship") {
+		t.Errorf("clear signal section missing:\n%s", got)
+	}
+	if strings.Contains(got, "## Was it verified") {
+		t.Errorf("question heading with no renderable signals must be skipped:\n%s", got)
+	}
+}
+
 func TestWrite_SanitizesSessionFileName(t *testing.T) {
 	dir := t.TempDir()
 	in := buildInput()

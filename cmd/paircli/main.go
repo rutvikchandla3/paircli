@@ -8,6 +8,9 @@ import (
 	"os"
 )
 
+// version is the CLI version, written into every report.
+var version = "0.2.0-dev"
+
 func main() {
 	if len(os.Args) < 2 {
 		usage()
@@ -22,6 +25,9 @@ func main() {
 		err = runHook(os.Args[2:])
 	case "doctor":
 		err = runDoctor(os.Args[2:])
+	case "version":
+		fmt.Printf("paircli %s\n", version)
+		return
 	case "-h", "--help", "help":
 		usage()
 		return
@@ -41,10 +47,25 @@ func usage() {
 	fmt.Fprint(os.Stderr, `paircli — PR process-signal aggregator
 
 Usage:
-  paircli scan <pr-number-or-url>   run both capture paths as needed, correlate, write output folder
-  paircli hook install <harness>    install Path-A hooks for one harness (claude-code | codex | pi)
-  paircli hook <harness> <event>    internal: invoked BY the installed hook
-  paircli doctor                    report which harnesses have hooks installed / are reconstructable
+  paircli scan <pr-number-or-url> [flags]   discover linked agent sessions, run the
+                                            signal pipeline, write the output folder
+  paircli hook install <harness>            install hooks for one harness (claude-code | codex | pi)
+  paircli hook uninstall <harness>          remove that harness's hooks
+  paircli hook <harness> <event>            internal: invoked BY the installed hook
+  paircli doctor                            report capture state per harness, gh, config and llm
+  paircli version                           print the version
+
+scan flags:
+  --out DIR               output folder (default <repo>/.paircli/pr-<n>)
+  --post                  create or update the PR comment
+  --include-prompts       let comment.md carry prompt text
+  --llm PROVIDER          none | anthropic | claude-cli (default: config)
+  --model MODEL           provider model (default: config)
+  --no-hooks              ignore hook-log records
+  --no-commit-patches     skip per-commit patches
+  --window-before DUR     session search window before the first commit (default 48h)
+  --window-after DUR      session search window after the last commit (default 2h)
+  --json                  print signals.json to stdout
 
 See docs/SIGNALS.md and docs/ARCHITECTURE.md for the full design.
 `)

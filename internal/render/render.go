@@ -62,6 +62,13 @@ const maxSignalFindings = 15
 // maxAlertFindings is how many findings an alert renders in the Alerts section.
 const maxAlertFindings = 3
 
+// maxFindingAnchors is how many anchors one finding line lists before the rest
+// are summarized. A single finding can carry hundreds of anchors on a large
+// PR (every changed hunk of a file, or every file a correction touched);
+// rendering them all turns the report into a wall of text, so the line stays a
+// pointer and signals.json keeps the full list.
+const maxFindingAnchors = 5
+
 // Write writes every report file into opts.OutDir. Each file ends with a
 // newline. Session files left over from an earlier run are deleted first.
 func Write(opts Options, rep *model.Report, attr *model.Attribution, sessions []*model.Session) error {
@@ -277,15 +284,25 @@ func effectiveProvenance(f model.Finding, sig model.Signal) model.Provenance {
 	return sig.Provenance
 }
 
-// anchorsText renders anchors as "`file` lines 40-45", joined by ", ".
+// anchorsText renders anchors as "`file` lines 40-45", joined by ", " and
+// capped at maxFindingAnchors, with the remainder counted.
 func anchorsText(anchors []model.Anchor) string {
-	var parts []string
-	for _, a := range anchors {
+	shown := anchors
+	extra := 0
+	if len(shown) > maxFindingAnchors {
+		extra = len(shown) - maxFindingAnchors
+		shown = shown[:maxFindingAnchors]
+	}
+	parts := make([]string, 0, len(shown)+1)
+	for _, a := range shown {
 		s := "`" + text(a.File) + "`"
 		if a.Lines != "" {
 			s += " lines " + text(a.Lines)
 		}
 		parts = append(parts, s)
+	}
+	if extra > 0 {
+		parts = append(parts, fmt.Sprintf("+%d more", extra))
 	}
 	return strings.Join(parts, ", ")
 }

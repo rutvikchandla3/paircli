@@ -1,6 +1,7 @@
 package render
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -448,6 +449,41 @@ func TestReportMarkdown_FindingCap(t *testing.T) {
 	alertFindings := strings.Count(got, "\n  - finding")
 	if alertFindings != maxAlertFindings {
 		t.Errorf("Alerts rendered %d findings, want %d", alertFindings, maxAlertFindings)
+	}
+}
+
+func TestReportMarkdown_AnchorCap(t *testing.T) {
+	rep := BuildReport(buildInput())
+	// A finding can carry an anchor per changed hunk or per touched file; on a
+	// large PR that is hundreds, which must not become one enormous line.
+	var anchors []model.Anchor
+	for i := 0; i < 40; i++ {
+		anchors = append(anchors, model.Anchor{
+			File:  fmt.Sprintf("src/f%02d.go", i),
+			Lines: fmt.Sprintf("%d-%d", i, i+1),
+		})
+	}
+	f := model.Finding{Summary: "Many hunks.", Severity: model.StateInfo, Anchors: anchors}
+	rep.Signals = []model.Signal{signalOf("VER-2", model.StateAlert, "Many hunks.", f)}
+	got := ReportMarkdown(rep)
+
+	if !strings.Contains(got, "+35 more") {
+		t.Errorf("missing anchor remainder count:\n%s", got)
+	}
+	if strings.Contains(got, "src/f39.go") {
+		t.Errorf("rendered an anchor past the cap")
+	}
+	if !strings.Contains(got, "`src/f00.go` lines 0-1") {
+		t.Errorf("missing the first anchor:\n%s", got)
+	}
+	// The full list stays in signals.json — only the report is digested.
+	if n := len(rep.Signals[0].Findings[0].Anchors); n != 40 {
+		t.Errorf("signal lost anchors: %d, want 40", n)
+	}
+	for _, line := range strings.Split(got, "\n") {
+		if len(line) > 1000 {
+			t.Errorf("finding line is %d chars, too long to read", len(line))
+		}
 	}
 }
 

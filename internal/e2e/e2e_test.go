@@ -6,7 +6,6 @@ import (
 	"flag"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"testing"
 
@@ -18,16 +17,8 @@ import (
 // `go test ./internal/e2e/... -run E2E -update`, never with `./...`.
 var update = flag.Bool("update", false, "rewrite golden files")
 
-// e2eOutputs are the reviewer-facing files the scenario writes. `exact` says
-// whether the file is compared byte for byte; see e2eCompareGolden.
-var e2eOutputs = []struct {
-	name  string
-	exact bool
-}{
-	{"signals.json", false},
-	{"report.md", true},
-	{"comment.md", true},
-}
+// e2eOutputs are the reviewer-facing files the scenario writes.
+var e2eOutputs = []string{"signals.json", "report.md", "comment.md"}
 
 // TestE2E_GoldenScenario runs the whole product over one synthetic PR
 // produced across all three harnesses and checks the golden outputs plus the
@@ -55,12 +46,12 @@ func TestE2E_GoldenScenario(t *testing.T) {
 	}
 
 	t.Run("golden", func(t *testing.T) {
-		for _, out := range e2eOutputs {
-			got, err := os.ReadFile(filepath.Join(w.outDir, out.name))
+		for _, name := range e2eOutputs {
+			got, err := os.ReadFile(filepath.Join(w.outDir, name))
 			if err != nil {
-				t.Fatalf("e2e: reading %s: %v", out.name, err)
+				t.Fatalf("e2e: reading %s: %v", name, err)
 			}
-			e2eCompareGolden(t, out.name, e2eNormalize(w, got), out.exact)
+			e2eCompareGolden(t, name, e2eNormalize(w, got))
 		}
 	})
 
@@ -347,18 +338,11 @@ func e2eAssertNoSecret(t *testing.T, w *world) {
 }
 
 // e2eCompareGolden compares got with testdata/golden/name, or rewrites it when
-// -update is set.
-//
-// exact files are compared, and stored, byte for byte. signals.json goes
-// through e2eCanonicalJSON on both sides instead: one payload it carries is
-// not stable, so the golden is stored in canonical form and -update stays
-// idempotent. Everything else in the file is still compared exactly.
-func e2eCompareGolden(t *testing.T, name, got string, exact bool) {
+// -update is set. Every output is compared, and stored, byte for byte: the
+// whole pipeline must be deterministic.
+func e2eCompareGolden(t *testing.T, name, got string) {
 	t.Helper()
 	path := filepath.Join("testdata", "golden", name)
-	if !exact {
-		got = e2eCanonicalJSON(t, got)
-	}
 	if *update {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatalf("e2e: mkdir testdata/golden: %v", err)
@@ -375,62 +359,6 @@ func e2eCompareGolden(t *testing.T, name, got string, exact bool) {
 	if want := string(raw); got != want {
 		t.Errorf("e2e: golden %s differs:\n--- golden ---\n%s\n--- got ---\n%s", name, want, got)
 	}
-}
-
-// e2eCanonicalJSON re-marshals a JSON document with every "files" array under
-// a signal's Data sorted by path, so the comparison does not depend on the
-// order the encoder happened to walk a Go map.
-//
-// One signal payload is genuinely unordered today: internal/detect/friction
-// builds FRI-1's Data["files"] by ranging over a map and sorts it only by edit
-// count, so files with the same count come out in a different order on every
-// run. That is a determinism defect against docs/plan/README.md
-// ("Determinism"), it lives outside internal/e2e, and fixing it there is a
-// one-line change (add a path tie-break to the dataFiles sort in
-// internal/detect/friction/fri1.go). Until then this keeps the golden
-// comparison about content rather than incidental ordering.
-func e2eCanonicalJSON(t *testing.T, raw string) string {
-	t.Helper()
-	var doc any
-	if err := json.Unmarshal([]byte(raw), &doc); err != nil {
-		t.Fatalf("e2e: parsing output for comparison: %v", err)
-	}
-	e2eSortFilesArrays(doc)
-	out, err := json.MarshalIndent(doc, "", "  ")
-	if err != nil {
-		t.Fatalf("e2e: re-encoding output for comparison: %v", err)
-	}
-	return string(out) + "\n"
-}
-
-// e2eSortFilesArrays sorts every "files" array of objects by their path, in
-// place and recursively.
-func e2eSortFilesArrays(v any) {
-	switch node := v.(type) {
-	case map[string]any:
-		if arr, ok := node["files"].([]any); ok {
-			sort.SliceStable(arr, func(i, j int) bool {
-				return e2eNodePath(arr[i]) < e2eNodePath(arr[j])
-			})
-		}
-		for _, child := range node {
-			e2eSortFilesArrays(child)
-		}
-	case []any:
-		for _, child := range node {
-			e2eSortFilesArrays(child)
-		}
-	}
-}
-
-// e2eNodePath returns the "path" field of a decoded JSON object, or "".
-func e2eNodePath(v any) string {
-	if m, ok := v.(map[string]any); ok {
-		if p, ok := m["path"].(string); ok {
-			return p
-		}
-	}
-	return ""
 }
 
 // e2eNormalize rewrites the run's temp directories to fixed placeholders so

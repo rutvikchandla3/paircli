@@ -1,65 +1,53 @@
 {
-  "commits": [
-    {
-      "confidence": "exact",
-      "method": "sha_exact",
-      "sessions": [
-        "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000"
-      ],
-      "sha": "4be1c0ffee4be1c0ffee4be1c0ffee4be1c0ffee"
-    },
-    {
-      "confidence": "exact",
-      "method": "sha_exact",
-      "sessions": [
-        "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-        "pi:8f0c2c7e-0000-4000-8000-000000000482"
-      ],
-      "sha": "7a2d9f10ab7a2d9f10ab7a2d9f10ab7a2d9f10ab"
-    },
-    {
-      "confidence": "unknown",
-      "method": "none",
-      "sha": "c31f4e77d0c31f4e77d0c31f4e77d0c31f4e77d0"
-    }
-  ],
+  "schema_version": "2",
+  "generated_at": "2026-09-27T16:00:00Z",
+  "tool": "paircli test",
+  "pr": {
+    "repo": "acme/shop",
+    "number": 482,
+    "url": "https://github.com/acme/shop/pull/482",
+    "title": "Add retry with backoff to webhook sender",
+    "head_ref": "feat/retry",
+    "base_ref": "main",
+    "commits": 3,
+    "files": 9,
+    "additions": 25,
+    "deletions": 1
+  },
   "coverage": {
     "capture": "partial",
-    "dropped_sessions": 0,
+    "sessions": 3,
     "harnesses": {
       "claude-code": 1,
       "codex": 1,
       "pi": 1
     },
-    "lines_explained": 19,
     "lines_total": 21,
+    "lines_explained": 19,
     "ratio": 0.9047619047619048,
-    "sessions": 3,
     "unattributed_commits": [
       "c31f4e77d0c31f4e77d0c31f4e77d0c31f4e77d0"
-    ]
+    ],
+    "dropped_sessions": 0
   },
-  "generated_at": "2026-09-27T16:00:00Z",
-  "pr": {
-    "additions": 25,
-    "base_ref": "main",
-    "commits": 3,
-    "deletions": 1,
-    "files": 9,
-    "head_ref": "feat/retry",
-    "number": 482,
-    "repo": "acme/shop",
-    "title": "Add retry with backoff to webhook sender",
-    "url": "https://github.com/acme/shop/pull/482"
-  },
-  "schema_version": "2",
   "sessions": [
     {
+      "ref": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+      "harness": "claude-code",
+      "id": "d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+      "start": "2026-09-27T13:59:00Z",
+      "end": "2026-09-27T14:40:00Z",
+      "models": [
+        "claude-opus-5-5",
+        "claude-sonnet-5"
+      ],
       "capture": "hooked",
+      "link": "sha_exact",
       "commits": [
         "4be1c0ffee4be1c0ffee4be1c0ffee4be1c0ffee",
         "7a2d9f10ab7a2d9f10ab7a2d9f10ab7a2d9f10ab"
       ],
+      "source_path": "{root}/claude/projects/{repo}/d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000.jsonl",
       "counts": {
         "command": 9,
         "compaction": 1,
@@ -74,27 +62,26 @@
         "subagent": 1,
         "todo": 1
       },
-      "end": "2026-09-27T14:40:00Z",
-      "harness": "claude-code",
-      "id": "d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-      "lines_authored": 18,
-      "link": "sha_exact",
-      "models": [
-        "claude-opus-5-5",
-        "claude-sonnet-5"
-      ],
-      "ref": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-      "source_path": "{root}/claude/projects/{repo}/d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000.jsonl",
-      "start": "2026-09-27T13:59:00Z",
       "usage": {
-        "cache_read": 0,
-        "cache_write": 0,
         "input": 0,
-        "output": 0
-      }
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "lines_authored": 18
     },
     {
+      "ref": "codex:019f0000-aaaa-7000-8000-000000000482",
+      "harness": "codex",
+      "id": "019f0000-aaaa-7000-8000-000000000482",
+      "start": "2026-09-27T14:41:00Z",
+      "end": "2026-09-27T14:45:00Z",
+      "models": [
+        "gpt-5.6-luna"
+      ],
       "capture": "reconstructed",
+      "link": "sha_ancestor",
+      "source_path": "{root}/codex/sessions/2026/09/27/rollout-2026-09-27T14-41-00-019f0000-aaaa-7000-8000-000000000482.jsonl",
       "counts": {
         "command": 1,
         "file_edit": 1,
@@ -104,29 +91,29 @@
         "model_change": 1,
         "prompt": 1
       },
-      "end": "2026-09-27T14:45:00Z",
-      "harness": "codex",
-      "id": "019f0000-aaaa-7000-8000-000000000482",
-      "lines_authored": 0,
-      "link": "sha_ancestor",
-      "models": [
-        "gpt-5.6-luna"
-      ],
-      "ref": "codex:019f0000-aaaa-7000-8000-000000000482",
-      "source_path": "{root}/codex/sessions/2026/09/27/rollout-2026-09-27T14-41-00-019f0000-aaaa-7000-8000-000000000482.jsonl",
-      "start": "2026-09-27T14:41:00Z",
       "usage": {
-        "cache_read": 0,
-        "cache_write": 0,
         "input": 0,
-        "output": 0
-      }
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "lines_authored": 0
     },
     {
+      "ref": "pi:8f0c2c7e-0000-4000-8000-000000000482",
+      "harness": "pi",
+      "id": "8f0c2c7e-0000-4000-8000-000000000482",
+      "start": "2026-09-27T14:49:05Z",
+      "end": "2026-09-27T14:55:00Z",
+      "models": [
+        "claude-opus-5-5"
+      ],
       "capture": "hooked",
+      "link": "sha_exact",
       "commits": [
         "7a2d9f10ab7a2d9f10ab7a2d9f10ab7a2d9f10ab"
       ],
+      "source_path": "{root}/pi/agent/sessions/--{repo}--/2026-09-27T14-49-00-000Z_8f0c2c7e-0000-4000-8000-000000000482.jsonl",
       "counts": {
         "assistant_message": 2,
         "file_edit": 2,
@@ -135,137 +122,177 @@
         "prompt": 1,
         "reset": 1
       },
-      "end": "2026-09-27T14:55:00Z",
-      "harness": "pi",
-      "id": "8f0c2c7e-0000-4000-8000-000000000482",
-      "lines_authored": 1,
-      "link": "sha_exact",
-      "models": [
-        "claude-opus-5-5"
-      ],
-      "ref": "pi:8f0c2c7e-0000-4000-8000-000000000482",
-      "source_path": "{root}/pi/agent/sessions/--{repo}--/2026-09-27T14-49-00-000Z_8f0c2c7e-0000-4000-8000-000000000482.jsonl",
-      "start": "2026-09-27T14:49:05Z",
       "usage": {
-        "cache_read": 0,
-        "cache_write": 0,
         "input": 0,
-        "output": 0
-      }
+        "output": 0,
+        "cache_read": 0,
+        "cache_write": 0
+      },
+      "lines_authored": 1
+    }
+  ],
+  "commits": [
+    {
+      "sha": "4be1c0ffee4be1c0ffee4be1c0ffee4be1c0ffee",
+      "sessions": [
+        "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000"
+      ],
+      "method": "sha_exact",
+      "confidence": "exact"
+    },
+    {
+      "sha": "7a2d9f10ab7a2d9f10ab7a2d9f10ab7a2d9f10ab",
+      "sessions": [
+        "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+        "pi:8f0c2c7e-0000-4000-8000-000000000482"
+      ],
+      "method": "sha_exact",
+      "confidence": "exact"
+    },
+    {
+      "sha": "c31f4e77d0c31f4e77d0c31f4e77d0c31f4e77d0",
+      "method": "none",
+      "confidence": "unknown"
     }
   ],
   "signals": [
     {
-      "data": {
-        "prompts": 3,
-        "sessions": 3,
-        "steering": 0
-      },
+      "id": "INT-1",
+      "question": "intent",
+      "title": "Ask ledger",
+      "priority": "P0",
+      "provenance": "derived",
+      "state": "info",
+      "summary": "3 prompts across 3 sessions; first: \"Add retry with backoff to the webhook sender. Don't touch the queue.\".",
       "findings": [
         {
+          "summary": "Add retry with backoff to the webhook sender. Don't touch the queue.",
+          "severity": "info",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e002",
+              "ts": "2026-09-27T14:00:05Z",
+              "excerpt": "Add retry with backoff to the webhook sender. Don't touch the queue."
+            }
+          ],
           "data": {
             "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
             "steering": false,
             "turn": 1
-          },
-          "evidence": [
-            {
-              "event": "d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e002",
-              "excerpt": "Add retry with backoff to the webhook sender. Don't touch the queue.",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:00:05Z"
-            }
-          ],
-          "severity": "info",
-          "summary": "Add retry with backoff to the webhook sender. Don't touch the queue."
+          }
         },
         {
+          "summary": "Add an idempotency key header to the webhook sender.",
+          "severity": "info",
+          "evidence": [
+            {
+              "session": "codex:019f0000-aaaa-7000-8000-000000000482",
+              "event": "m1",
+              "ts": "2026-09-27T14:41:02Z",
+              "excerpt": "Add an idempotency key header to the webhook sender."
+            }
+          ],
           "data": {
             "session": "codex:019f0000-aaaa-7000-8000-000000000482",
             "steering": false,
             "turn": 1
-          },
-          "evidence": [
-            {
-              "event": "m1",
-              "excerpt": "Add an idempotency key header to the webhook sender.",
-              "session": "codex:019f0000-aaaa-7000-8000-000000000482",
-              "ts": "2026-09-27T14:41:02Z"
-            }
-          ],
-          "severity": "info",
-          "summary": "Add an idempotency key header to the webhook sender."
+          }
         },
         {
+          "summary": "Make the webhook sender idempotent.",
+          "severity": "info",
+          "evidence": [
+            {
+              "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
+              "event": "pi000001",
+              "ts": "2026-09-27T14:49:05Z",
+              "excerpt": "Make the webhook sender idempotent."
+            }
+          ],
           "data": {
             "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
             "steering": false,
             "turn": 1
-          },
-          "evidence": [
-            {
-              "event": "pi000001",
-              "excerpt": "Make the webhook sender idempotent.",
-              "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
-              "ts": "2026-09-27T14:49:05Z"
-            }
-          ],
-          "severity": "info",
-          "summary": "Make the webhook sender idempotent."
+          }
         }
       ],
-      "id": "INT-1",
-      "priority": "P0",
-      "provenance": "derived",
-      "question": "intent",
-      "state": "info",
-      "summary": "3 prompts across 3 sessions; first: \"Add retry with backoff to the webhook sender. Don't touch the queue.\".",
       "support": {
         "claude-code": "full",
         "codex": "full",
         "pi": "full"
       },
-      "title": "Ask ledger"
+      "data": {
+        "prompts": 3,
+        "sessions": 3,
+        "steering": 0
+      }
     },
     {
-      "data": {
-        "count": 1
-      },
+      "id": "INT-2",
+      "question": "intent",
+      "title": "Human-answered decisions",
+      "priority": "P0",
+      "provenance": "recorded",
+      "state": "info",
+      "summary": "1 decisions made by a human, latest at 14:00 UTC.",
       "findings": [
         {
+          "summary": "Q: Where should the retry attempt count live between deploys? → Postgres",
+          "severity": "info",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_ask",
+              "ts": "2026-09-27T14:00:21Z",
+              "excerpt": "Where should the retry attempt count live between deploys?"
+            }
+          ],
           "data": {
             "header": "Retry state",
             "options": [
               "Redis",
               "Postgres"
             ]
-          },
-          "evidence": [
-            {
-              "event": "toolu_ask",
-              "excerpt": "Where should the retry attempt count live between deploys?",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:00:21Z"
-            }
-          ],
-          "severity": "info",
-          "summary": "Q: Where should the retry attempt count live between deploys? → Postgres"
+          }
         }
       ],
-      "id": "INT-2",
-      "priority": "P0",
-      "provenance": "recorded",
-      "question": "intent",
-      "state": "info",
-      "summary": "1 decisions made by a human, latest at 14:00 UTC.",
       "support": {
         "claude-code": "full",
         "codex": "full",
         "pi": "full"
       },
-      "title": "Human-answered decisions"
+      "data": {
+        "count": 1
+      }
     },
     {
+      "id": "INT-3",
+      "question": "intent",
+      "title": "Approved plan and plan drift",
+      "priority": "P0",
+      "provenance": "recorded",
+      "state": "info",
+      "summary": "Plan approved at 14:00 UTC in claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000; 1 plans proposed in total.",
+      "findings": [
+        {
+          "summary": "Plan approved at 14:00 UTC (4 lines).",
+          "severity": "info",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_plan",
+              "ts": "2026-09-27T14:00:31Z",
+              "excerpt": "1. Add sendWithRetry to src/webhooks/retry.ts"
+            }
+          ]
+        }
+      ],
+      "support": {
+        "claude-code": "full",
+        "codex": "partial",
+        "pi": "partial"
+      },
       "data": {
         "plans": [
           {
@@ -276,42 +303,14 @@
             "text": "1. Add sendWithRetry to src/webhooks/retry.ts\n2. Wire the webhook sender through it\n3. Add a metrics counter for retries\n4. add jitter to the backoff"
           }
         ]
-      },
-      "findings": [
-        {
-          "evidence": [
-            {
-              "event": "toolu_plan",
-              "excerpt": "1. Add sendWithRetry to src/webhooks/retry.ts",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:00:31Z"
-            }
-          ],
-          "severity": "info",
-          "summary": "Plan approved at 14:00 UTC (4 lines)."
-        }
-      ],
-      "id": "INT-3",
-      "priority": "P0",
-      "provenance": "recorded",
-      "question": "intent",
-      "state": "info",
-      "summary": "Plan approved at 14:00 UTC in claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000; 1 plans proposed in total.",
-      "support": {
-        "claude-code": "full",
-        "codex": "partial",
-        "pi": "partial"
-      },
-      "title": "Approved plan and plan drift"
+      }
     },
     {
-      "data": {
-        "files": []
-      },
       "id": "INT-4",
+      "question": "intent",
+      "title": "Rules in effect",
       "priority": "P1",
       "provenance": "recorded",
-      "question": "intent",
       "state": "info",
       "summary": "No instruction files were recorded.",
       "support": {
@@ -319,9 +318,73 @@
         "codex": "full",
         "pi": "full"
       },
-      "title": "Rules in effect"
+      "data": {
+        "files": []
+      }
     },
     {
+      "id": "AUTH-1",
+      "question": "authorship",
+      "title": "Line-level authorship",
+      "priority": "P0",
+      "provenance": "derived",
+      "state": "info",
+      "summary": "Agent wrote 19 of 21 changed lines (90%); 0 edited by a human afterwards, 0 written by a human in session, 2 not captured.",
+      "findings": [
+        {
+          "summary": "`src/webhooks/retry.ts` — 8 agent · 0 agent→human · 0 human · 0 uncaptured",
+          "severity": "info"
+        },
+        {
+          "summary": "`test/retry.test.ts` — 3 agent · 0 agent→human · 0 human · 0 uncaptured",
+          "severity": "info"
+        },
+        {
+          "summary": "`src/metrics.ts` — 2 agent · 0 agent→human · 0 human · 0 uncaptured",
+          "severity": "info"
+        },
+        {
+          "summary": "`migrations/0042_retry.sql` — 1 agent · 0 agent→human · 0 human · 1 uncaptured",
+          "severity": "info",
+          "anchors": [
+            {
+              "file": "migrations/0042_retry.sql",
+              "lines": "2"
+            }
+          ]
+        },
+        {
+          "summary": "`.github/workflows/release.yml` — 2 agent · 0 agent→human · 0 human · 0 uncaptured",
+          "severity": "info"
+        },
+        {
+          "summary": "`src/webhooks/sender.ts` — 1 agent · 0 agent→human · 0 human · 0 uncaptured",
+          "severity": "info"
+        },
+        {
+          "summary": "`test/webhook.test.ts` — 1 agent · 0 agent→human · 0 human · 0 uncaptured",
+          "severity": "info"
+        },
+        {
+          "summary": "`package.json` — 1 agent · 0 agent→human · 0 human · 0 uncaptured",
+          "severity": "info"
+        },
+        {
+          "summary": "`README.md` — 0 agent · 0 agent→human · 0 human · 1 uncaptured",
+          "severity": "info",
+          "anchors": [
+            {
+              "file": "README.md",
+              "lines": "6"
+            }
+          ]
+        }
+      ],
+      "support": {
+        "claude-code": "full",
+        "codex": "partial",
+        "pi": "full"
+      },
       "data": {
         "counts": {
           "agent": 19,
@@ -329,37 +392,6 @@
           "uncaptured": 2
         },
         "files": [
-          {
-            "counts": {
-              "agent": 2
-            },
-            "path": ".github/workflows/release.yml"
-          },
-          {
-            "counts": {
-              "uncaptured": 1
-            },
-            "path": "README.md"
-          },
-          {
-            "counts": {
-              "agent": 1,
-              "uncaptured": 1
-            },
-            "path": "migrations/0042_retry.sql"
-          },
-          {
-            "counts": {
-              "agent": 1
-            },
-            "path": "package.json"
-          },
-          {
-            "counts": {
-              "agent": 2
-            },
-            "path": "src/metrics.ts"
-          },
           {
             "counts": {
               "agent": 8,
@@ -375,6 +407,18 @@
           },
           {
             "counts": {
+              "agent": 2
+            },
+            "path": "src/metrics.ts"
+          },
+          {
+            "counts": {
+              "agent": 1
+            },
+            "path": "test/webhook.test.ts"
+          },
+          {
+            "counts": {
               "agent": 3,
               "trivial": 1
             },
@@ -382,77 +426,64 @@
           },
           {
             "counts": {
+              "agent": 1,
+              "uncaptured": 1
+            },
+            "path": "migrations/0042_retry.sql"
+          },
+          {
+            "counts": {
+              "agent": 2
+            },
+            "path": ".github/workflows/release.yml"
+          },
+          {
+            "counts": {
               "agent": 1
             },
-            "path": "test/webhook.test.ts"
+            "path": "package.json"
+          },
+          {
+            "counts": {
+              "uncaptured": 1
+            },
+            "path": "README.md"
           }
         ],
         "reformatted": 0
-      },
-      "findings": [
-        {
-          "severity": "info",
-          "summary": "`src/webhooks/retry.ts` — 8 agent · 0 agent→human · 0 human · 0 uncaptured"
-        },
-        {
-          "severity": "info",
-          "summary": "`test/retry.test.ts` — 3 agent · 0 agent→human · 0 human · 0 uncaptured"
-        },
-        {
-          "severity": "info",
-          "summary": "`src/metrics.ts` — 2 agent · 0 agent→human · 0 human · 0 uncaptured"
-        },
-        {
-          "anchors": [
-            {
-              "file": "migrations/0042_retry.sql",
-              "lines": "2"
-            }
-          ],
-          "severity": "info",
-          "summary": "`migrations/0042_retry.sql` — 1 agent · 0 agent→human · 0 human · 1 uncaptured"
-        },
-        {
-          "severity": "info",
-          "summary": "`.github/workflows/release.yml` — 2 agent · 0 agent→human · 0 human · 0 uncaptured"
-        },
-        {
-          "severity": "info",
-          "summary": "`src/webhooks/sender.ts` — 1 agent · 0 agent→human · 0 human · 0 uncaptured"
-        },
-        {
-          "severity": "info",
-          "summary": "`test/webhook.test.ts` — 1 agent · 0 agent→human · 0 human · 0 uncaptured"
-        },
-        {
-          "severity": "info",
-          "summary": "`package.json` — 1 agent · 0 agent→human · 0 human · 0 uncaptured"
-        },
-        {
-          "anchors": [
-            {
-              "file": "README.md",
-              "lines": "6"
-            }
-          ],
-          "severity": "info",
-          "summary": "`README.md` — 0 agent · 0 agent→human · 0 human · 1 uncaptured"
-        }
-      ],
-      "id": "AUTH-1",
+      }
+    },
+    {
+      "id": "AUTH-2",
+      "question": "authorship",
+      "title": "Session-commit map and coverage",
       "priority": "P0",
       "provenance": "derived",
-      "question": "authorship",
       "state": "info",
-      "summary": "Agent wrote 19 of 21 changed lines (90%); 0 edited by a human afterwards, 0 written by a human in session, 2 not captured.",
+      "summary": "3 sessions (1 claude-code, 1 codex, 1 pi) explain 90% of changed lines. 1 commits have no session.",
+      "findings": [
+        {
+          "summary": "`claude-code:d41f7a0e` (hooked) linked by sha_exact — 18 lines, commits 4be1c0f, 7a2d9f1",
+          "severity": "info"
+        },
+        {
+          "summary": "`codex:019f0000` (reconstructed) linked by sha_ancestor — 0 lines",
+          "severity": "info"
+        },
+        {
+          "summary": "`pi:8f0c2c7e` (hooked) linked by sha_exact — 1 lines, commits 7a2d9f1",
+          "severity": "info"
+        },
+        {
+          "summary": "Commit c31f4e7 has no matching session.",
+          "severity": "alert"
+        }
+      ],
       "support": {
         "claude-code": "full",
         "codex": "partial",
         "pi": "full"
       },
-      "title": "Line-level authorship"
-    },
-    {
       "data": {
         "ratio": 0.9047619047619048,
         "sessions": [
@@ -486,39 +517,21 @@
         "unattributed": [
           "c31f4e77d0c31f4e77d0c31f4e77d0c31f4e77d0"
         ]
-      },
-      "findings": [
-        {
-          "severity": "info",
-          "summary": "`claude-code:d41f7a0e` (hooked) linked by sha_exact — 18 lines, commits 4be1c0f, 7a2d9f1"
-        },
-        {
-          "severity": "info",
-          "summary": "`codex:019f0000` (reconstructed) linked by sha_ancestor — 0 lines"
-        },
-        {
-          "severity": "info",
-          "summary": "`pi:8f0c2c7e` (hooked) linked by sha_exact — 1 lines, commits 7a2d9f1"
-        },
-        {
-          "severity": "alert",
-          "summary": "Commit c31f4e7 has no matching session."
-        }
-      ],
-      "id": "AUTH-2",
-      "priority": "P0",
-      "provenance": "derived",
-      "question": "authorship",
-      "state": "info",
-      "summary": "3 sessions (1 claude-code, 1 codex, 1 pi) explain 90% of changed lines. 1 commits have no session.",
-      "support": {
-        "claude-code": "full",
-        "codex": "partial",
-        "pi": "full"
-      },
-      "title": "Session-commit map and coverage"
+      }
     },
     {
+      "id": "AUTH-3",
+      "question": "authorship",
+      "title": "Model mix and disclosure trailer",
+      "priority": "P1",
+      "provenance": "recorded",
+      "state": "info",
+      "summary": "Assisted-by: claude-code:claude-opus-5-5 (79%), claude-code:claude-sonnet-5 (16%), pi:claude-opus-5-5 (5%) of agent lines.",
+      "support": {
+        "claude-code": "full",
+        "codex": "full",
+        "pi": "full"
+      },
       "data": {
         "efforts": {
           "gpt-5.6-luna": [
@@ -546,21 +559,58 @@
           }
         ],
         "trailer": "Assisted-by: claude-code:claude-opus-5-5\nAssisted-by: claude-code:claude-sonnet-5\nAssisted-by: pi:claude-opus-5-5"
-      },
-      "id": "AUTH-3",
-      "priority": "P1",
+      }
+    },
+    {
+      "id": "VER-1",
+      "question": "verification",
+      "title": "Verification log",
+      "priority": "P0",
       "provenance": "recorded",
-      "question": "authorship",
       "state": "info",
-      "summary": "Assisted-by: claude-code:claude-opus-5-5 (79%), claude-code:claude-sonnet-5 (16%), pi:claude-opus-5-5 (5%) of agent lines.",
+      "summary": "Checks ran 5 times: test ×4 (last pass), typecheck ×1 (last pass)",
+      "findings": [
+        {
+          "summary": "`npm test` ×4 (fail, fail, fail, pass) — last: 61 passed, 0 failed",
+          "severity": "info",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_test_pass",
+              "ts": "2026-09-27T14:02:01Z",
+              "excerpt": "Tests: 61 passed, 61 total"
+            }
+          ],
+          "data": {
+            "by_user": false,
+            "class": "test",
+            "last_status": "pass",
+            "runs": 4
+          }
+        },
+        {
+          "summary": "`npx tsc --noEmit` ×1 (pass) — last: pass",
+          "severity": "info",
+          "evidence": [
+            {
+              "session": "codex:019f0000-aaaa-7000-8000-000000000482",
+              "event": "exec-3",
+              "ts": "2026-09-27T14:45:00Z"
+            }
+          ],
+          "data": {
+            "by_user": false,
+            "class": "typecheck",
+            "last_status": "pass",
+            "runs": 1
+          }
+        }
+      ],
       "support": {
         "claude-code": "full",
         "codex": "full",
         "pi": "full"
       },
-      "title": "Model mix and disclosure trailer"
-    },
-    {
       "data": {
         "by_class": {
           "test": {
@@ -634,58 +684,169 @@
             "ts": "2026-09-27T14:45:00Z"
           }
         ]
-      },
+      }
+    },
+    {
+      "id": "VER-2",
+      "question": "verification",
+      "title": "Verification freshness",
+      "priority": "P0",
+      "provenance": "derived",
+      "state": "alert",
+      "summary": "8 PR hunks were edited after the last passing test run (14:02 UTC).",
       "findings": [
         {
-          "data": {
-            "by_user": false,
-            "class": "test",
-            "last_status": "pass",
-            "runs": 4
-          },
-          "evidence": [
+          "summary": "`src/webhooks/retry.ts` lines 12 changed at 14:07 UTC, after the last passing run.",
+          "severity": "alert",
+          "anchors": [
             {
-              "event": "toolu_test_pass",
-              "excerpt": "Tests: 61 passed, 61 total",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:02:01Z"
+              "file": "src/webhooks/retry.ts",
+              "lines": "12"
             }
           ],
-          "severity": "info",
-          "summary": "`npm test` ×4 (fail, fail, fail, pass) — last: 61 passed, 0 failed"
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_test_pass",
+              "ts": "2026-09-27T14:02:01Z",
+              "excerpt": "Tests: 61 passed, 61 total"
+            },
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_edit_12",
+              "ts": "2026-09-27T14:07:01Z",
+              "excerpt": "src/webhooks/retry.ts: throw new Error(\"retry exhausted\");"
+            }
+          ]
         },
         {
-          "data": {
-            "by_user": false,
-            "class": "typecheck",
-            "last_status": "pass",
-            "runs": 1
-          },
-          "evidence": [
+          "summary": "`src/webhooks/sender.ts` lines 14 changed at 14:52 UTC, after the last passing run.",
+          "severity": "alert",
+          "anchors": [
             {
-              "event": "exec-3",
-              "session": "codex:019f0000-aaaa-7000-8000-000000000482",
-              "ts": "2026-09-27T14:45:00Z"
+              "file": "src/webhooks/sender.ts",
+              "lines": "14"
             }
           ],
-          "severity": "info",
-          "summary": "`npx tsc --noEmit` ×1 (pass) — last: pass"
+          "evidence": [
+            {
+              "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
+              "event": "call_2",
+              "ts": "2026-09-27T14:52:05Z",
+              "excerpt": "src/webhooks/sender.ts: headers[\"Idempotency-Key\"] = String(Date.now());"
+            }
+          ]
+        },
+        {
+          "summary": "`src/metrics.ts` lines 3-4 changed at 14:31 UTC, after the last passing run.",
+          "severity": "alert",
+          "anchors": [
+            {
+              "file": "src/metrics.ts",
+              "lines": "3-4"
+            }
+          ],
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_edit_metrics",
+              "ts": "2026-09-27T14:31:01Z",
+              "excerpt": "src/metrics.ts: export const retryAttempts = new Counter(\"webhook_retry_attempts\");"
+            },
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_edit_metrics2",
+              "ts": "2026-09-27T14:31:21Z",
+              "excerpt": "src/metrics.ts: export const retryExhausted = new Counter(\"webhook_retry_exhausted\");"
+            }
+          ]
+        },
+        {
+          "summary": "`test/retry.test.ts` lines 1, 3-4 changed at 14:12 UTC, after the last passing run.",
+          "severity": "alert",
+          "anchors": [
+            {
+              "file": "test/retry.test.ts",
+              "lines": "1"
+            },
+            {
+              "file": "test/retry.test.ts",
+              "lines": "3-4"
+            }
+          ],
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_sub_write",
+              "ts": "2026-09-27T14:12:31Z",
+              "excerpt": "test/retry.test.ts: import { sendWithRetry } from \"../src/webhooks/retry\"; it(\"retries three times\", async () =\u003e { expect(true).toBe(true);"
+            }
+          ]
+        },
+        {
+          "summary": "`migrations/0042_retry.sql` lines 1 changed at 14:05 UTC, after the last passing run.",
+          "severity": "alert",
+          "anchors": [
+            {
+              "file": "migrations/0042_retry.sql",
+              "lines": "1"
+            }
+          ],
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_edit_migration",
+              "ts": "2026-09-27T14:05:01Z",
+              "excerpt": "migrations/0042_retry.sql: ALTER TABLE webhook_events ADD COLUMN retry_count integer DEFAULT 0;"
+            }
+          ]
+        },
+        {
+          "summary": "`.github/workflows/release.yml` lines 22-23 changed at 14:09 UTC, after the last passing run.",
+          "severity": "alert",
+          "anchors": [
+            {
+              "file": ".github/workflows/release.yml",
+              "lines": "22-23"
+            }
+          ],
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_edit_workflow",
+              "ts": "2026-09-27T14:09:01Z",
+              "excerpt": ".github/workflows/release.yml: env: NODE_OPTIONS: --max-old-space-size=4096"
+            }
+          ]
+        },
+        {
+          "summary": "`package.json` lines 11 changed at 14:03 UTC, after the last passing run.",
+          "severity": "alert",
+          "anchors": [
+            {
+              "file": "package.json",
+              "lines": "11"
+            }
+          ],
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_edit_pkg",
+              "ts": "2026-09-27T14:03:21Z",
+              "excerpt": "package.json: \"p-retry\": \"6.2.1\","
+            }
+          ]
+        },
+        {
+          "summary": "2 changed lines were written outside captured sessions, so when they were written relative to checks is unknown.",
+          "severity": "info"
         }
       ],
-      "id": "VER-1",
-      "priority": "P0",
-      "provenance": "recorded",
-      "question": "verification",
-      "state": "info",
-      "summary": "Checks ran 5 times: test ×4 (last pass), typecheck ×1 (last pass)",
       "support": {
         "claude-code": "full",
         "codex": "full",
         "pi": "full"
       },
-      "title": "Verification log"
-    },
-    {
       "data": {
         "class": "test",
         "last_pass": {
@@ -698,178 +859,14 @@
         "stale_events": 8,
         "stale_hunks": 8,
         "uncaptured_lines": 2
-      },
-      "findings": [
-        {
-          "anchors": [
-            {
-              "file": "src/webhooks/retry.ts",
-              "lines": "12"
-            }
-          ],
-          "evidence": [
-            {
-              "event": "toolu_test_pass",
-              "excerpt": "Tests: 61 passed, 61 total",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:02:01Z"
-            },
-            {
-              "event": "toolu_edit_12",
-              "excerpt": "src/webhooks/retry.ts: throw new Error(\"retry exhausted\");",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:07:01Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "`src/webhooks/retry.ts` lines 12 changed at 14:07 UTC, after the last passing run."
-        },
-        {
-          "anchors": [
-            {
-              "file": "src/webhooks/sender.ts",
-              "lines": "14"
-            }
-          ],
-          "evidence": [
-            {
-              "event": "call_2",
-              "excerpt": "src/webhooks/sender.ts: headers[\"Idempotency-Key\"] = String(Date.now());",
-              "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
-              "ts": "2026-09-27T14:52:05Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "`src/webhooks/sender.ts` lines 14 changed at 14:52 UTC, after the last passing run."
-        },
-        {
-          "anchors": [
-            {
-              "file": "src/metrics.ts",
-              "lines": "3-4"
-            }
-          ],
-          "evidence": [
-            {
-              "event": "toolu_edit_metrics",
-              "excerpt": "src/metrics.ts: export const retryAttempts = new Counter(\"webhook_retry_attempts\");",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:31:01Z"
-            },
-            {
-              "event": "toolu_edit_metrics2",
-              "excerpt": "src/metrics.ts: export const retryExhausted = new Counter(\"webhook_retry_exhausted\");",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:31:21Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "`src/metrics.ts` lines 3-4 changed at 14:31 UTC, after the last passing run."
-        },
-        {
-          "anchors": [
-            {
-              "file": "test/retry.test.ts",
-              "lines": "1"
-            },
-            {
-              "file": "test/retry.test.ts",
-              "lines": "3-4"
-            }
-          ],
-          "evidence": [
-            {
-              "event": "toolu_sub_write",
-              "excerpt": "test/retry.test.ts: import { sendWithRetry } from \"../src/webhooks/retry\"; it(\"retries three times\", async () =\u003e { expect(true).toBe(true);",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:12:31Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "`test/retry.test.ts` lines 1, 3-4 changed at 14:12 UTC, after the last passing run."
-        },
-        {
-          "anchors": [
-            {
-              "file": "migrations/0042_retry.sql",
-              "lines": "1"
-            }
-          ],
-          "evidence": [
-            {
-              "event": "toolu_edit_migration",
-              "excerpt": "migrations/0042_retry.sql: ALTER TABLE webhook_events ADD COLUMN retry_count integer DEFAULT 0;",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:05:01Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "`migrations/0042_retry.sql` lines 1 changed at 14:05 UTC, after the last passing run."
-        },
-        {
-          "anchors": [
-            {
-              "file": ".github/workflows/release.yml",
-              "lines": "22-23"
-            }
-          ],
-          "evidence": [
-            {
-              "event": "toolu_edit_workflow",
-              "excerpt": ".github/workflows/release.yml: env: NODE_OPTIONS: --max-old-space-size=4096",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:09:01Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "`.github/workflows/release.yml` lines 22-23 changed at 14:09 UTC, after the last passing run."
-        },
-        {
-          "anchors": [
-            {
-              "file": "package.json",
-              "lines": "11"
-            }
-          ],
-          "evidence": [
-            {
-              "event": "toolu_edit_pkg",
-              "excerpt": "package.json: \"p-retry\": \"6.2.1\",",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:03:21Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "`package.json` lines 11 changed at 14:03 UTC, after the last passing run."
-        },
-        {
-          "severity": "info",
-          "summary": "2 changed lines were written outside captured sessions, so when they were written relative to checks is unknown."
-        }
-      ],
-      "id": "VER-2",
-      "priority": "P0",
-      "provenance": "derived",
-      "question": "verification",
-      "state": "alert",
-      "summary": "8 PR hunks were edited after the last passing test run (14:02 UTC).",
-      "support": {
-        "claude-code": "full",
-        "codex": "full",
-        "pi": "full"
-      },
-      "title": "Verification freshness"
+      }
     },
     {
-      "data": {
-        "full_suite": true,
-        "targeted_runs": 0,
-        "uncovered": []
-      },
       "id": "VER-3",
+      "question": "verification",
+      "title": "Check-to-change coverage",
       "priority": "P1",
       "provenance": "derived",
-      "question": "verification",
       "state": "clear",
       "summary": "A full test run (`npm test`) ran; every changed file was likely exercised.",
       "support": {
@@ -877,175 +874,174 @@
         "codex": "partial",
         "pi": "partial"
       },
-      "title": "Check-to-change coverage"
+      "data": {
+        "full_suite": true,
+        "targeted_runs": 0,
+        "uncovered": []
+      }
     },
     {
+      "id": "VER-4",
+      "question": "verification",
+      "title": "Test integrity",
+      "priority": "P0",
+      "provenance": "derived",
+      "state": "alert",
+      "summary": "Test integrity issues: 3 test edits between fail and pass.",
+      "findings": [
+        {
+          "summary": "Test file `test/webhook.test.ts` was edited between a failing run (14:00 UTC) and the next passing run (14:02 UTC).",
+          "severity": "alert",
+          "anchors": [
+            {
+              "file": "test/webhook.test.ts",
+              "lines": "9"
+            }
+          ],
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_test_2",
+              "ts": "2026-09-27T14:00:46Z",
+              "excerpt": "Exit code 1 Tests: 1 failed, 60 passed"
+            },
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_edit_test",
+              "ts": "2026-09-27T14:01:51Z",
+              "excerpt": "test/webhook.test.ts: expect(attempts).toBeGreaterThan(0);"
+            },
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_test_pass",
+              "ts": "2026-09-27T14:02:01Z",
+              "excerpt": "Tests: 61 passed, 61 total"
+            }
+          ],
+          "data": {
+            "assertions_lost": 0,
+            "file": "test/webhook.test.ts"
+          }
+        },
+        {
+          "summary": "Test file `test/webhook.test.ts` was edited between a failing run (14:01 UTC) and the next passing run (14:02 UTC).",
+          "severity": "alert",
+          "anchors": [
+            {
+              "file": "test/webhook.test.ts",
+              "lines": "9"
+            }
+          ],
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_test_4",
+              "ts": "2026-09-27T14:01:02Z",
+              "excerpt": "Exit code 1 Tests: 1 failed, 60 passed"
+            },
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_edit_test",
+              "ts": "2026-09-27T14:01:51Z",
+              "excerpt": "test/webhook.test.ts: expect(attempts).toBeGreaterThan(0);"
+            },
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_test_pass",
+              "ts": "2026-09-27T14:02:01Z",
+              "excerpt": "Tests: 61 passed, 61 total"
+            }
+          ],
+          "data": {
+            "assertions_lost": 0,
+            "file": "test/webhook.test.ts"
+          }
+        },
+        {
+          "summary": "Test file `test/webhook.test.ts` was edited between a failing run (14:01 UTC) and the next passing run (14:02 UTC).",
+          "severity": "alert",
+          "anchors": [
+            {
+              "file": "test/webhook.test.ts",
+              "lines": "9"
+            }
+          ],
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_test_fail",
+              "ts": "2026-09-27T14:01:41Z",
+              "excerpt": "Exit code 1 Tests: 1 failed, 60 passed retries until success Expected: 5 Received: 2"
+            },
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_edit_test",
+              "ts": "2026-09-27T14:01:51Z",
+              "excerpt": "test/webhook.test.ts: expect(attempts).toBeGreaterThan(0);"
+            },
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_test_pass",
+              "ts": "2026-09-27T14:02:01Z",
+              "excerpt": "Tests: 61 passed, 61 total"
+            }
+          ],
+          "data": {
+            "assertions_lost": 0,
+            "file": "test/webhook.test.ts"
+          }
+        }
+      ],
+      "support": {
+        "claude-code": "full",
+        "codex": "full",
+        "pi": "full"
+      },
       "data": {
         "assertions_removed": 0,
         "deleted_tests": 0,
         "fail_edit_pass": 3,
         "skip_markers": 0,
         "snapshot_updates": 0
-      },
-      "findings": [
-        {
-          "anchors": [
-            {
-              "file": "test/webhook.test.ts",
-              "lines": "9"
-            }
-          ],
-          "data": {
-            "assertions_lost": 0,
-            "file": "test/webhook.test.ts"
-          },
-          "evidence": [
-            {
-              "event": "toolu_test_2",
-              "excerpt": "Exit code 1 Tests: 1 failed, 60 passed",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:00:46Z"
-            },
-            {
-              "event": "toolu_edit_test",
-              "excerpt": "test/webhook.test.ts: expect(attempts).toBeGreaterThan(0);",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:01:51Z"
-            },
-            {
-              "event": "toolu_test_pass",
-              "excerpt": "Tests: 61 passed, 61 total",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:02:01Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "Test file `test/webhook.test.ts` was edited between a failing run (14:00 UTC) and the next passing run (14:02 UTC)."
-        },
-        {
-          "anchors": [
-            {
-              "file": "test/webhook.test.ts",
-              "lines": "9"
-            }
-          ],
-          "data": {
-            "assertions_lost": 0,
-            "file": "test/webhook.test.ts"
-          },
-          "evidence": [
-            {
-              "event": "toolu_test_4",
-              "excerpt": "Exit code 1 Tests: 1 failed, 60 passed",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:01:02Z"
-            },
-            {
-              "event": "toolu_edit_test",
-              "excerpt": "test/webhook.test.ts: expect(attempts).toBeGreaterThan(0);",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:01:51Z"
-            },
-            {
-              "event": "toolu_test_pass",
-              "excerpt": "Tests: 61 passed, 61 total",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:02:01Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "Test file `test/webhook.test.ts` was edited between a failing run (14:01 UTC) and the next passing run (14:02 UTC)."
-        },
-        {
-          "anchors": [
-            {
-              "file": "test/webhook.test.ts",
-              "lines": "9"
-            }
-          ],
-          "data": {
-            "assertions_lost": 0,
-            "file": "test/webhook.test.ts"
-          },
-          "evidence": [
-            {
-              "event": "toolu_test_fail",
-              "excerpt": "Exit code 1 Tests: 1 failed, 60 passed retries until success Expected: 5 Received: 2",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:01:41Z"
-            },
-            {
-              "event": "toolu_edit_test",
-              "excerpt": "test/webhook.test.ts: expect(attempts).toBeGreaterThan(0);",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:01:51Z"
-            },
-            {
-              "event": "toolu_test_pass",
-              "excerpt": "Tests: 61 passed, 61 total",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:02:01Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "Test file `test/webhook.test.ts` was edited between a failing run (14:01 UTC) and the next passing run (14:02 UTC)."
-        }
-      ],
-      "id": "VER-4",
+      }
+    },
+    {
+      "id": "VER-5",
+      "question": "verification",
+      "title": "Quality-gate bypasses",
       "priority": "P0",
       "provenance": "derived",
-      "question": "verification",
       "state": "alert",
-      "summary": "Test integrity issues: 3 test edits between fail and pass.",
+      "summary": "Quality-gate bypasses: 1 CI config change.",
+      "findings": [
+        {
+          "summary": "CI config changed: `.github/workflows/release.yml`.",
+          "severity": "alert",
+          "anchors": [
+            {
+              "file": ".github/workflows/release.yml"
+            }
+          ]
+        }
+      ],
       "support": {
         "claude-code": "full",
         "codex": "full",
         "pi": "full"
       },
-      "title": "Test integrity"
-    },
-    {
       "data": {
         "ci_config": 1,
         "coverage_config": 0,
         "no_verify": 0,
         "suppressions": 0
-      },
-      "findings": [
-        {
-          "anchors": [
-            {
-              "file": ".github/workflows/release.yml"
-            }
-          ],
-          "severity": "alert",
-          "summary": "CI config changed: `.github/workflows/release.yml`."
-        }
-      ],
-      "id": "VER-5",
-      "priority": "P0",
-      "provenance": "derived",
-      "question": "verification",
-      "state": "alert",
-      "summary": "Quality-gate bypasses: 1 CI config change.",
-      "support": {
-        "claude-code": "full",
-        "codex": "full",
-        "pi": "full"
-      },
-      "title": "Quality-gate bypasses"
+      }
     },
     {
-      "data": {
-        "dev_servers": 0,
-        "images": 0,
-        "local_requests": 0,
-        "open_errors": null
-      },
       "id": "VER-6",
+      "question": "verification",
+      "title": "Runtime and visual evidence",
       "priority": "P1",
       "provenance": "recorded",
-      "question": "verification",
       "state": "info",
       "summary": "No screenshots, dev servers or local requests were captured.",
       "support": {
@@ -1053,18 +1049,25 @@
         "codex": "partial",
         "pi": "partial"
       },
-      "title": "Runtime and visual evidence"
+      "data": {
+        "dev_servers": 0,
+        "images": 0,
+        "local_requests": 0,
+        "open_errors": null
+      }
     },
     {
-      "data": {
-        "correction_prompts": 0,
-        "denials": 0,
-        "interrupts": 1,
-        "rejections": 0,
-        "touching_pr": 1
-      },
+      "id": "DEC-1",
+      "question": "decisions",
+      "title": "Human corrections",
+      "priority": "P0",
+      "provenance": "recorded",
+      "state": "alert",
+      "summary": "1 human correction (1 interrupt); 1 touched PR line.",
       "findings": [
         {
+          "summary": "Interrupted at 14:05 UTC while the agent was editing `src/webhooks/retry.ts`, `test/webhook.test.ts`.",
+          "severity": "alert",
           "anchors": [
             {
               "file": "src/webhooks/retry.ts",
@@ -1083,47 +1086,75 @@
               "lines": "11"
             }
           ],
-          "data": {
-            "kind": "interrupt"
-          },
           "evidence": [
             {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
               "event": "d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e052",
-              "excerpt": "user",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:05:10Z"
+              "ts": "2026-09-27T14:05:10Z",
+              "excerpt": "user"
             },
             {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
               "event": "toolu_edit_01",
-              "excerpt": "src/webhooks/retry.ts",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:00:41Z"
+              "ts": "2026-09-27T14:00:41Z",
+              "excerpt": "src/webhooks/retry.ts"
             },
             {
-              "event": "toolu_edit_02",
-              "excerpt": "src/webhooks/retry.ts",
               "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:00:43Z"
+              "event": "toolu_edit_02",
+              "ts": "2026-09-27T14:00:43Z",
+              "excerpt": "src/webhooks/retry.ts"
             }
           ],
-          "severity": "alert",
-          "summary": "Interrupted at 14:05 UTC while the agent was editing `src/webhooks/retry.ts`, `test/webhook.test.ts`."
+          "data": {
+            "kind": "interrupt"
+          }
         }
       ],
-      "id": "DEC-1",
-      "priority": "P0",
-      "provenance": "recorded",
-      "question": "decisions",
-      "state": "alert",
-      "summary": "1 human correction (1 interrupt); 1 touched PR line.",
       "support": {
         "claude-code": "full",
         "codex": "full",
         "pi": "full"
       },
-      "title": "Human corrections"
+      "data": {
+        "correction_prompts": 0,
+        "denials": 0,
+        "interrupts": 1,
+        "rejections": 0,
+        "touching_pr": 1
+      }
     },
     {
+      "id": "DEC-2",
+      "question": "decisions",
+      "title": "Abandoned approaches",
+      "priority": "P1",
+      "provenance": "derived",
+      "state": "info",
+      "summary": "1 abandoned attempt (1 abandoned branch).",
+      "findings": [
+        {
+          "summary": "Left a branch at 14:51 UTC: Discarded the per-attempt key approach and went back to a stable event key.",
+          "severity": "info",
+          "evidence": [
+            {
+              "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
+              "event": "pi000004",
+              "ts": "2026-09-27T14:51:00Z",
+              "excerpt": "Discarded the per-attempt key approach and went back to a stable event key."
+            }
+          ],
+          "data": {
+            "kind": "branch_switch",
+            "off_branch_edits": 1
+          }
+        }
+      ],
+      "support": {
+        "claude-code": "full",
+        "codex": "partial",
+        "pi": "full"
+      },
       "data": {
         "branches": 1,
         "created_then_deleted": 0,
@@ -1131,41 +1162,54 @@
         "off_branch_edits": 1,
         "reverted_edits": 0,
         "rollbacks": 0
-      },
-      "findings": [
-        {
-          "data": {
-            "kind": "branch_switch",
-            "off_branch_edits": 1
-          },
-          "evidence": [
-            {
-              "event": "pi000004",
-              "excerpt": "Discarded the per-attempt key approach and went back to a stable event key.",
-              "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
-              "ts": "2026-09-27T14:51:00Z"
-            }
-          ],
-          "severity": "info",
-          "summary": "Left a branch at 14:51 UTC: Discarded the per-attempt key approach and went back to a stable event key."
-        }
-      ],
-      "id": "DEC-2",
-      "priority": "P1",
-      "provenance": "derived",
-      "question": "decisions",
-      "state": "info",
-      "summary": "1 abandoned attempt (1 abandoned branch).",
-      "support": {
-        "claude-code": "full",
-        "codex": "partial",
-        "pi": "full"
-      },
-      "title": "Abandoned approaches"
+      }
     },
     {
+      "id": "FRI-1",
+      "question": "friction",
+      "title": "Churn hotspots",
+      "priority": "P1",
+      "provenance": "derived",
+      "state": "info",
+      "summary": "Most rework: `src/webhooks/retry.ts` (13 edits). Other files: 3 edits or fewer.",
+      "findings": [
+        {
+          "summary": "`src/webhooks/retry.ts`: 13 edits, 2 edit-then-check cycles.",
+          "severity": "info",
+          "anchors": [
+            {
+              "file": "src/webhooks/retry.ts"
+            }
+          ],
+          "data": {
+            "cycles": 2,
+            "edits": 13,
+            "path": "src/webhooks/retry.ts"
+          }
+        }
+      ],
+      "support": {
+        "claude-code": "full",
+        "codex": "full",
+        "pi": "full"
+      },
       "data": {
         "files": [
+          {
+            "cycles": 2,
+            "edits": 13,
+            "path": "src/webhooks/retry.ts"
+          },
+          {
+            "cycles": 1,
+            "edits": 3,
+            "path": "src/webhooks/sender.ts"
+          },
+          {
+            "cycles": 0,
+            "edits": 2,
+            "path": "src/metrics.ts"
+          },
           {
             "cycles": 0,
             "edits": 1,
@@ -1183,21 +1227,6 @@
           },
           {
             "cycles": 0,
-            "edits": 2,
-            "path": "src/metrics.ts"
-          },
-          {
-            "cycles": 2,
-            "edits": 13,
-            "path": "src/webhooks/retry.ts"
-          },
-          {
-            "cycles": 1,
-            "edits": 3,
-            "path": "src/webhooks/sender.ts"
-          },
-          {
-            "cycles": 0,
             "edits": 1,
             "path": "test/retry.test.ts"
           },
@@ -1207,47 +1236,14 @@
             "path": "test/webhook.test.ts"
           }
         ]
-      },
-      "findings": [
-        {
-          "anchors": [
-            {
-              "file": "src/webhooks/retry.ts"
-            }
-          ],
-          "data": {
-            "cycles": 2,
-            "edits": 13,
-            "path": "src/webhooks/retry.ts"
-          },
-          "severity": "info",
-          "summary": "`src/webhooks/retry.ts`: 13 edits, 2 edit-then-check cycles."
-        }
-      ],
-      "id": "FRI-1",
-      "priority": "P1",
-      "provenance": "derived",
-      "question": "friction",
-      "state": "info",
-      "summary": "Most rework: `src/webhooks/retry.ts` (13 edits). Other files: 3 edits or fewer.",
-      "support": {
-        "claude-code": "full",
-        "codex": "full",
-        "pi": "full"
-      },
-      "title": "Churn hotspots"
+      }
     },
     {
-      "data": {
-        "failures": 0,
-        "loops": 0,
-        "timeouts": 0,
-        "unresolved": 0
-      },
       "id": "FRI-2",
+      "question": "friction",
+      "title": "Loops and unresolved errors",
       "priority": "P1",
       "provenance": "derived",
-      "question": "friction",
       "state": "clear",
       "summary": "No repeated failures, unresolved check failures or timeouts.",
       "support": {
@@ -1255,129 +1251,198 @@
         "codex": "full",
         "pi": "full"
       },
-      "title": "Loops and unresolved errors"
+      "data": {
+        "failures": 0,
+        "loops": 0,
+        "timeouts": 0,
+        "unresolved": 0
+      }
     },
     {
-      "data": {
-        "lines_after": 3,
-        "resets": 2
-      },
+      "id": "FRI-3",
+      "question": "friction",
+      "title": "Context resets",
+      "priority": "P1",
+      "provenance": "recorded",
+      "state": "info",
+      "summary": "2 context resets (compaction, branch_switch); 3 PR lines were written after a reset.",
       "findings": [
         {
-          "data": {
-            "files": 1
-          },
+          "summary": "Context compacted (auto) at 14:30 UTC; 1 PR files edited afterwards.",
+          "severity": "info",
           "evidence": [
             {
-              "event": "d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e069",
               "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000-e069",
               "ts": "2026-09-27T14:30:00Z"
             }
           ],
-          "severity": "info",
-          "summary": "Context compacted (auto) at 14:30 UTC; 1 PR files edited afterwards."
-        },
-        {
           "data": {
             "files": 1
-          },
+          }
+        },
+        {
+          "summary": "Session branch_switch at 14:51 UTC; 1 PR files edited afterwards.",
+          "severity": "info",
           "evidence": [
             {
-              "event": "pi000004",
               "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
+              "event": "pi000004",
               "ts": "2026-09-27T14:51:00Z"
             }
           ],
-          "severity": "info",
-          "summary": "Session branch_switch at 14:51 UTC; 1 PR files edited afterwards."
+          "data": {
+            "files": 1
+          }
         }
       ],
-      "id": "FRI-3",
-      "priority": "P1",
-      "provenance": "recorded",
-      "question": "friction",
-      "state": "info",
-      "summary": "2 context resets (compaction, branch_switch); 3 PR lines were written after a reset.",
       "support": {
         "claude-code": "full",
         "codex": "full",
         "pi": "full"
       },
-      "title": "Context resets"
+      "data": {
+        "lines_after": 3,
+        "resets": 2
+      }
     },
     {
+      "id": "FRI-4",
+      "question": "friction",
+      "title": "Knowledge lookups",
+      "priority": "P2",
+      "provenance": "recorded",
+      "state": "info",
+      "summary": "1 web or docs lookup; 1 was followed by edits to PR files.",
+      "findings": [
+        {
+          "summary": "Searched \"stripe webhook idempotency key header\" at 14:42 UTC; edits followed in `src/webhooks/sender.ts`.",
+          "severity": "info",
+          "evidence": [
+            {
+              "session": "codex:019f0000-aaaa-7000-8000-000000000482",
+              "event": "ext-1",
+              "ts": "2026-09-27T14:42:00Z",
+              "excerpt": "stripe webhook idempotency key header"
+            }
+          ]
+        }
+      ],
+      "support": {
+        "claude-code": "full",
+        "codex": "full",
+        "pi": "full"
+      },
       "data": {
         "followed_by_edits": 1,
         "lookups": 1
-      },
-      "findings": [
-        {
-          "evidence": [
-            {
-              "event": "ext-1",
-              "excerpt": "stripe webhook idempotency key header",
-              "session": "codex:019f0000-aaaa-7000-8000-000000000482",
-              "ts": "2026-09-27T14:42:00Z"
-            }
-          ],
-          "severity": "info",
-          "summary": "Searched \"stripe webhook idempotency key header\" at 14:42 UTC; edits followed in `src/webhooks/sender.ts`."
-        }
-      ],
-      "id": "FRI-4",
-      "priority": "P2",
-      "provenance": "recorded",
-      "question": "friction",
-      "state": "info",
-      "summary": "1 web or docs lookup; 1 was followed by edits to PR files.",
-      "support": {
-        "claude-code": "full",
-        "codex": "full",
-        "pi": "full"
-      },
-      "title": "Knowledge lookups"
+      }
     },
     {
-      "data": {
-        "by_class": {
-          "migration": 1
-        },
-        "outside_repo_writes": 0
-      },
+      "id": "EXP-1",
+      "question": "exposure",
+      "title": "Side-effect ledger",
+      "priority": "P0",
+      "provenance": "derived",
+      "state": "alert",
+      "summary": "Effects outside the diff: 1 migration.",
       "findings": [
         {
+          "summary": "Ran a database migration: `prisma migrate deploy` at 14:06 UTC.",
+          "severity": "alert",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_migrate",
+              "ts": "2026-09-27T14:06:01Z",
+              "excerpt": "prisma migrate deploy"
+            }
+          ],
           "data": {
             "by_user": false,
             "class": "migration",
             "event": "toolu_migrate",
             "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000"
-          },
-          "evidence": [
-            {
-              "event": "toolu_migrate",
-              "excerpt": "prisma migrate deploy",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:06:01Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "Ran a database migration: `prisma migrate deploy` at 14:06 UTC."
+          }
         }
       ],
-      "id": "EXP-1",
-      "priority": "P0",
-      "provenance": "derived",
-      "question": "exposure",
-      "state": "alert",
-      "summary": "Effects outside the diff: 1 migration.",
       "support": {
         "claude-code": "full",
         "codex": "full",
         "pi": "full"
       },
-      "title": "Side-effect ledger"
+      "data": {
+        "by_class": {
+          "migration": 1
+        },
+        "outside_repo_writes": 0
+      }
     },
     {
+      "id": "EXP-2",
+      "question": "exposure",
+      "title": "Dependency provenance",
+      "priority": "P0",
+      "provenance": "derived",
+      "state": "alert",
+      "summary": "1 dependencies added (1 agent choice); 1 install attempt for a package that does not exist.",
+      "findings": [
+        {
+          "summary": "Tried to install `express-retry-webhook`: the registry says it does not exist.",
+          "severity": "alert",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_install_bad",
+              "ts": "2026-09-27T14:04:01Z",
+              "excerpt": "Exit code 1 npm error code E404 npm error 404 Not Found - GET https://registry.npmjs.org/express-retry-webhook"
+            }
+          ],
+          "data": {
+            "event": "toolu_install_bad",
+            "manager": "npm",
+            "name": "express-retry-webhook",
+            "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000"
+          }
+        },
+        {
+          "summary": "Added `p-retry@6.2.1`: the agent chose it; no prompt mentions it.",
+          "severity": "alert",
+          "anchors": [
+            {
+              "file": "package.json",
+              "lines": "11"
+            }
+          ],
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_install_ok",
+              "ts": "2026-09-27T14:03:01Z",
+              "excerpt": "npm i p-retry@6.2.1"
+            },
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_edit_pkg",
+              "ts": "2026-09-27T14:03:21Z",
+              "excerpt": "package.json: \"p-retry\": \"6.2.1\","
+            }
+          ],
+          "data": {
+            "file": "package.json",
+            "indirect": false,
+            "line": 11,
+            "name": "p-retry",
+            "requested": false,
+            "version": "6.2.1"
+          }
+        }
+      ],
+      "support": {
+        "claude-code": "full",
+        "codex": "full",
+        "pi": "full"
+      },
       "data": {
         "added": [
           {
@@ -1391,83 +1456,38 @@
         "failed_installs": [
           "express-retry-webhook"
         ]
-      },
-      "findings": [
-        {
-          "data": {
-            "event": "toolu_install_bad",
-            "manager": "npm",
-            "name": "express-retry-webhook",
-            "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000"
-          },
-          "evidence": [
-            {
-              "event": "toolu_install_bad",
-              "excerpt": "Exit code 1 npm error code E404 npm error 404 Not Found - GET https://registry.npmjs.org/express-retry-webhook",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:04:01Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "Tried to install `express-retry-webhook`: the registry says it does not exist."
-        },
-        {
-          "anchors": [
-            {
-              "file": "package.json",
-              "lines": "11"
-            }
-          ],
-          "data": {
-            "file": "package.json",
-            "indirect": false,
-            "line": 11,
-            "name": "p-retry",
-            "requested": false,
-            "version": "6.2.1"
-          },
-          "evidence": [
-            {
-              "event": "toolu_install_ok",
-              "excerpt": "npm i p-retry@6.2.1",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:03:01Z"
-            },
-            {
-              "event": "toolu_edit_pkg",
-              "excerpt": "package.json: \"p-retry\": \"6.2.1\",",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:03:21Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "Added `p-retry@6.2.1`: the agent chose it; no prompt mentions it."
-        }
-      ],
-      "id": "EXP-2",
-      "priority": "P0",
-      "provenance": "derived",
-      "question": "exposure",
-      "state": "alert",
-      "summary": "1 dependencies added (1 agent choice); 1 install attempt for a package that does not exist.",
-      "support": {
-        "claude-code": "full",
-        "codex": "full",
-        "pi": "full"
-      },
-      "title": "Dependency provenance"
+      }
     },
     {
-      "data": {
-        "chains": 1,
-        "external_reads": 2
-      },
+      "id": "EXP-3",
+      "question": "exposure",
+      "title": "Untrusted-input chain",
+      "priority": "P0",
+      "provenance": "derived",
+      "state": "alert",
+      "summary": "1 sensitive file was edited after reading external content in the same session.",
       "findings": [
         {
+          "summary": "14:08 UTC read external content (`gh issue view 312`) → 14:09 UTC edited `.github/workflows/release.yml`.",
+          "severity": "alert",
           "anchors": [
             {
               "file": ".github/workflows/release.yml",
               "lines": "22-23"
+            }
+          ],
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_gh_issue",
+              "ts": "2026-09-27T14:08:01Z",
+              "excerpt": "gh issue view 312"
+            },
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_edit_workflow",
+              "ts": "2026-09-27T14:09:01Z",
+              "excerpt": ".github/workflows/release.yml: env: NODE_OPTIONS: --max-old-space-size=4096"
             }
           ],
           "data": {
@@ -1476,39 +1496,90 @@
             "file": ".github/workflows/release.yml",
             "read_event": "toolu_gh_issue",
             "read_session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000"
-          },
-          "evidence": [
-            {
-              "event": "toolu_gh_issue",
-              "excerpt": "gh issue view 312",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:08:01Z"
-            },
-            {
-              "event": "toolu_edit_workflow",
-              "excerpt": ".github/workflows/release.yml: env: NODE_OPTIONS: --max-old-space-size=4096",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:09:01Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "14:08 UTC read external content (`gh issue view 312`) → 14:09 UTC edited `.github/workflows/release.yml`."
+          }
         }
       ],
-      "id": "EXP-3",
-      "priority": "P0",
-      "provenance": "derived",
-      "question": "exposure",
-      "state": "alert",
-      "summary": "1 sensitive file was edited after reading external content in the same session.",
       "support": {
         "claude-code": "full",
         "codex": "full",
         "pi": "full"
       },
-      "title": "Untrusted-input chain"
+      "data": {
+        "chains": 1,
+        "external_reads": 2
+      }
     },
     {
+      "id": "EXP-4",
+      "question": "exposure",
+      "title": "Secret contact",
+      "priority": "P1",
+      "provenance": "derived",
+      "state": "alert",
+      "summary": "2 in prompts or output; 1 secret file read.",
+      "findings": [
+        {
+          "summary": "A anthropic_key appeared in command output at 14:10 UTC (sk-a…(33 chars)).",
+          "severity": "alert",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_cat_env",
+              "ts": "2026-09-27T14:10:01Z",
+              "excerpt": "sk-a…(33 chars)"
+            }
+          ],
+          "data": {
+            "event": "toolu_cat_env",
+            "kind": "anthropic_key",
+            "masked": "sk-a…(33 chars)",
+            "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+            "source": "output"
+          }
+        },
+        {
+          "summary": "A db_url_password appeared in command output at 14:10 UTC (post…(20 chars)).",
+          "severity": "alert",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_cat_env",
+              "ts": "2026-09-27T14:10:01Z",
+              "excerpt": "post…(20 chars)"
+            }
+          ],
+          "data": {
+            "event": "toolu_cat_env",
+            "kind": "db_url_password",
+            "masked": "post…(20 chars)",
+            "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+            "source": "output"
+          }
+        },
+        {
+          "summary": "Read `.env` at 14:10 UTC.",
+          "severity": "info",
+          "evidence": [
+            {
+              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+              "event": "toolu_cat_env",
+              "ts": "2026-09-27T14:10:01Z",
+              "excerpt": ".env"
+            }
+          ],
+          "data": {
+            "count": 1,
+            "event": "toolu_cat_env",
+            "path": ".env",
+            "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000"
+          }
+        }
+      ],
+      "support": {
+        "claude-code": "full",
+        "codex": "full",
+        "pi": "full"
+      },
       "data": {
         "diff": 0,
         "kinds": [
@@ -1517,79 +1588,59 @@
         ],
         "output": 2,
         "reads": 1
-      },
+      }
+    },
+    {
+      "id": "OVS-1",
+      "question": "oversight",
+      "title": "Autonomy envelope",
+      "priority": "P0",
+      "provenance": "recorded",
+      "state": "info",
+      "summary": "100% of 35 tool calls ran with no approval step.",
       "findings": [
         {
-          "data": {
-            "event": "toolu_cat_env",
-            "kind": "anthropic_key",
-            "masked": "sk-a…(33 chars)",
-            "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-            "source": "output"
-          },
-          "evidence": [
-            {
-              "event": "toolu_cat_env",
-              "excerpt": "sk-a…(33 chars)",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:10:01Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "A anthropic_key appeared in command output at 14:10 UTC (sk-a…(33 chars))."
-        },
-        {
-          "data": {
-            "event": "toolu_cat_env",
-            "kind": "db_url_password",
-            "masked": "post…(20 chars)",
-            "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-            "source": "output"
-          },
-          "evidence": [
-            {
-              "event": "toolu_cat_env",
-              "excerpt": "post…(20 chars)",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:10:01Z"
-            }
-          ],
-          "severity": "alert",
-          "summary": "A db_url_password appeared in command output at 14:10 UTC (post…(20 chars))."
-        },
-        {
-          "data": {
-            "count": 1,
-            "event": "toolu_cat_env",
-            "path": ".env",
-            "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000"
-          },
-          "evidence": [
-            {
-              "event": "toolu_cat_env",
-              "excerpt": ".env",
-              "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-              "ts": "2026-09-27T14:10:01Z"
-            }
-          ],
+          "summary": "`claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000`: 100% of 30 tool calls ran with no approval step (modes: bypassPermissions).",
           "severity": "info",
-          "summary": "Read `.env` at 14:10 UTC."
+          "data": {
+            "approval_possible": 0,
+            "auto_approved": 0,
+            "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+            "tool_calls": 30,
+            "unapproved": 30,
+            "unknown": 0
+          }
+        },
+        {
+          "summary": "`codex:019f0000-aaaa-7000-8000-000000000482`: approvals never, sandbox danger-full-access for 100% of 3 tool calls.",
+          "severity": "info",
+          "data": {
+            "approval_possible": 0,
+            "auto_approved": 0,
+            "session": "codex:019f0000-aaaa-7000-8000-000000000482",
+            "tool_calls": 3,
+            "unapproved": 3,
+            "unknown": 0
+          }
+        },
+        {
+          "summary": "`pi:8f0c2c7e-0000-4000-8000-000000000482`: no permission layer; 2 tool calls.",
+          "severity": "info",
+          "data": {
+            "approval_possible": 0,
+            "auto_approved": 0,
+            "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
+            "tool_calls": 2,
+            "unapproved": 2,
+            "unknown": 0
+          }
         }
       ],
-      "id": "EXP-4",
-      "priority": "P1",
-      "provenance": "derived",
-      "question": "exposure",
-      "state": "alert",
-      "summary": "2 in prompts or output; 1 secret file read.",
       "support": {
         "claude-code": "full",
         "codex": "full",
         "pi": "full"
       },
-      "title": "Secret contact"
-    },
-    {
       "data": {
         "approval_possible": 0,
         "auto_approved": 0,
@@ -1620,72 +1671,20 @@
         "tool_calls": 35,
         "unapproved": 35,
         "unknown": 0
-      },
-      "findings": [
-        {
-          "data": {
-            "approval_possible": 0,
-            "auto_approved": 0,
-            "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-            "tool_calls": 30,
-            "unapproved": 30,
-            "unknown": 0
-          },
-          "severity": "info",
-          "summary": "`claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000`: 100% of 30 tool calls ran with no approval step (modes: bypassPermissions)."
-        },
-        {
-          "data": {
-            "approval_possible": 0,
-            "auto_approved": 0,
-            "session": "codex:019f0000-aaaa-7000-8000-000000000482",
-            "tool_calls": 3,
-            "unapproved": 3,
-            "unknown": 0
-          },
-          "severity": "info",
-          "summary": "`codex:019f0000-aaaa-7000-8000-000000000482`: approvals never, sandbox danger-full-access for 100% of 3 tool calls."
-        },
-        {
-          "data": {
-            "approval_possible": 0,
-            "auto_approved": 0,
-            "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
-            "tool_calls": 2,
-            "unapproved": 2,
-            "unknown": 0
-          },
-          "severity": "info",
-          "summary": "`pi:8f0c2c7e-0000-4000-8000-000000000482`: no permission layer; 2 tool calls."
-        }
-      ],
-      "id": "OVS-1",
-      "priority": "P0",
-      "provenance": "recorded",
-      "question": "oversight",
-      "state": "info",
-      "summary": "100% of 35 tool calls ran with no approval step.",
-      "support": {
-        "claude-code": "full",
-        "codex": "full",
-        "pi": "full"
-      },
-      "title": "Autonomy envelope"
+      }
     },
     {
-      "data": {
-        "human_events": 5,
-        "longest": {
-          "from": "2026-09-27T14:00:21Z",
-          "lines": 10,
-          "minutes": 4,
-          "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
-          "to": "2026-09-27T14:05:10Z",
-          "tool_calls": 20
-        }
-      },
+      "id": "OVS-2",
+      "question": "oversight",
+      "title": "Human touchpoints",
+      "priority": "P1",
+      "provenance": "derived",
+      "state": "info",
+      "summary": "Longest unattended stretch: 4 min and 20 tool calls in `claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000`; 10 PR lines were written in it.",
       "findings": [
         {
+          "summary": "`claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000`: longest unattended stretch 4 min, 20 tool calls, 10 PR lines written.",
+          "severity": "info",
           "anchors": [
             {
               "file": "src/webhooks/retry.ts",
@@ -1711,11 +1710,11 @@
             "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
             "to": "2026-09-27T14:05:10Z",
             "tool_calls": 20
-          },
-          "severity": "info",
-          "summary": "`claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000`: longest unattended stretch 4 min, 20 tool calls, 10 PR lines written."
+          }
         },
         {
+          "summary": "`codex:019f0000-aaaa-7000-8000-000000000482`: longest unattended stretch 3 min, 3 tool calls, 0 PR lines written.",
+          "severity": "info",
           "data": {
             "from": "2026-09-27T14:41:02Z",
             "lines": 0,
@@ -1723,11 +1722,11 @@
             "session": "codex:019f0000-aaaa-7000-8000-000000000482",
             "to": "2026-09-27T14:45:00Z",
             "tool_calls": 3
-          },
-          "severity": "info",
-          "summary": "`codex:019f0000-aaaa-7000-8000-000000000482`: longest unattended stretch 3 min, 3 tool calls, 0 PR lines written."
+          }
         },
         {
+          "summary": "`pi:8f0c2c7e-0000-4000-8000-000000000482`: longest unattended stretch 5 min, 2 tool calls, 1 PR line written.",
+          "severity": "info",
           "anchors": [
             {
               "file": "src/webhooks/sender.ts",
@@ -1741,37 +1740,38 @@
             "session": "pi:8f0c2c7e-0000-4000-8000-000000000482",
             "to": "2026-09-27T14:55:00Z",
             "tool_calls": 2
-          },
-          "severity": "info",
-          "summary": "`pi:8f0c2c7e-0000-4000-8000-000000000482`: longest unattended stretch 5 min, 2 tool calls, 1 PR line written."
+          }
         }
       ],
-      "id": "OVS-2",
-      "priority": "P1",
-      "provenance": "derived",
-      "question": "oversight",
-      "state": "info",
-      "summary": "Longest unattended stretch: 4 min and 20 tool calls in `claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000`; 10 PR lines were written in it.",
       "support": {
         "claude-code": "full",
         "codex": "full",
         "pi": "full"
       },
-      "title": "Human touchpoints"
+      "data": {
+        "human_events": 5,
+        "longest": {
+          "from": "2026-09-27T14:00:21Z",
+          "lines": 10,
+          "minutes": 4,
+          "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
+          "to": "2026-09-27T14:05:10Z",
+          "tool_calls": 20
+        }
+      }
     },
     {
-      "data": {
-        "subagents": [
-          {
-            "id": "b7c2f1a0",
-            "lines": 3,
-            "model": "claude-sonnet-5",
-            "type": "general-purpose"
-          }
-        ]
-      },
+      "id": "OVS-3",
+      "question": "oversight",
+      "title": "Delegated work",
+      "priority": "P2",
+      "provenance": "recorded",
+      "state": "info",
+      "summary": "1 subagents; 3 PR lines were written by subagents.",
       "findings": [
         {
+          "summary": "Subagent `general-purpose` (claude-sonnet-5) wrote 3 PR lines in `test/retry.test.ts`.",
+          "severity": "info",
           "anchors": [
             {
               "file": "test/retry.test.ts",
@@ -1787,52 +1787,52 @@
             "lines": 3,
             "model": "claude-sonnet-5",
             "type": "general-purpose"
-          },
-          "severity": "info",
-          "summary": "Subagent `general-purpose` (claude-sonnet-5) wrote 3 PR lines in `test/retry.test.ts`."
+          }
         }
       ],
-      "id": "OVS-3",
-      "priority": "P2",
-      "provenance": "recorded",
-      "question": "oversight",
-      "state": "info",
-      "summary": "1 subagents; 3 PR lines were written by subagents.",
       "support": {
         "claude-code": "full",
         "codex": "partial",
         "pi": "partial"
       },
-      "title": "Delegated work"
+      "data": {
+        "subagents": [
+          {
+            "id": "b7c2f1a0",
+            "lines": 3,
+            "model": "claude-sonnet-5",
+            "type": "general-purpose"
+          }
+        ]
+      }
     },
     {
-      "data": {
-        "open_tasks": 1,
-        "todo_comments": 0
-      },
+      "id": "CON-2",
+      "question": "consistency",
+      "title": "Open loops",
+      "priority": "P1",
+      "provenance": "recorded",
+      "state": "alert",
+      "summary": "1 tasks still open at session end.",
       "findings": [
         {
+          "summary": "Task still open at session end: “add jitter”",
+          "severity": "alert",
           "data": {
             "session": "claude-code:d41f7a0e-4c1b-4f2a-9a11-4821a7c9e000",
             "status": "pending"
-          },
-          "severity": "alert",
-          "summary": "Task still open at session end: “add jitter”"
+          }
         }
       ],
-      "id": "CON-2",
-      "priority": "P1",
-      "provenance": "recorded",
-      "question": "consistency",
-      "state": "alert",
-      "summary": "1 tasks still open at session end.",
       "support": {
         "claude-code": "full",
         "codex": "full",
         "pi": "partial"
       },
-      "title": "Open loops"
+      "data": {
+        "open_tasks": 1,
+        "todo_comments": 0
+      }
     }
-  ],
-  "tool": "paircli test"
+  ]
 }

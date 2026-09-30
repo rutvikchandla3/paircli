@@ -1,6 +1,7 @@
 package verification
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/rutvikchandla3/paircli/internal/model"
@@ -135,6 +136,66 @@ func TestVER6_None(t *testing.T) {
 	data := sig.Data
 	if data["images"] != 0 || data["dev_servers"] != 0 || data["local_requests"] != 0 {
 		t.Errorf("unexpected non-zero counts in data: %v", data)
+	}
+}
+
+// TestVER6_OpenErrorsAreOrdered runs the detector repeatedly over a PR with
+// several files carrying errors. Go randomizes map iteration, so before the
+// files were sorted this produced a different order on almost every run, while
+// the report promises byte-identical output for identical input. A one-file
+// fixture cannot catch it: with a single entry there is no order to differ.
+func TestVER6_OpenErrorsAreOrdered(t *testing.T) {
+	files := []string{"src/a.go", "src/b.go", "src/c.go", "src/d.go", "src/e.go"}
+	times := []string{"14:01", "14:02", "14:03", "14:04", "14:05"}
+
+	sb := testkit.Session(model.HarnessClaudeCode, "s1")
+	sb.At("14:00").Create("src/a.go", "package a")
+	for i, f := range files {
+		sb.At(times[i]).Add(model.Event{
+			Kind: model.KindDiagnostics,
+			Diagnostics: &model.Diagnostics{
+				Path:     "/repo/" + f,
+				RelPath:  f,
+				Errors:   i + 1,
+				Messages: []string{"boom"},
+			},
+		})
+	}
+
+	pb := testkit.PR("acme/shop", 42)
+	for _, f := range files {
+		pb = pb.Add(f, 1, "package x", "var v = 1")
+	}
+	ctx := testkit.Ctx(pb.Build(), sb.Build())
+
+	// The same input must produce the same output every time.
+	var first string
+	for run := 0; run < 30; run++ {
+		raw, err := json.Marshal(ver6{}.Detect(ctx))
+		if err != nil {
+			t.Fatalf("marshal: %v", err)
+		}
+		if run == 0 {
+			first = string(raw)
+			continue
+		}
+		if string(raw) != first {
+			t.Fatalf("VER-6 output changed between runs (run %d): map iteration order is reaching the report", run)
+		}
+	}
+
+	// And the files come out in sorted order.
+	openErrors, ok := ver6{}.Detect(ctx).Data["open_errors"].([]map[string]any)
+	if !ok {
+		t.Fatalf("open_errors missing or wrong type")
+	}
+	if len(openErrors) != len(files) {
+		t.Fatalf("open_errors = %d, want %d", len(openErrors), len(files))
+	}
+	for i, oe := range openErrors {
+		if got := oe["file"]; got != files[i] {
+			t.Errorf("open_errors[%d] = %v, want %q", i, got, files[i])
+		}
 	}
 }
 

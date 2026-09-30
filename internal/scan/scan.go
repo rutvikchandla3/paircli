@@ -27,6 +27,7 @@ import (
 	"github.com/rutvikchandla3/paircli/internal/model"
 	"github.com/rutvikchandla3/paircli/internal/pr"
 	"github.com/rutvikchandla3/paircli/internal/render"
+	"github.com/rutvikchandla3/paircli/internal/snapshot"
 )
 
 // CommentMarker is the HTML comment every paircli PR comment starts with. A
@@ -44,6 +45,7 @@ type Options struct {
 	NoHooks         bool           // skip hook-log records
 	NoCommitPatches bool           // skip per-commit patches
 	NoAgentTrace    bool           // skip agent-trace.json
+	Snapshot        bool           // also write snapshot.json (a full replay record)
 	Post            bool           // upsert the PR comment
 	IncludePrompts  bool           // let comment.md carry prompt text
 	LLM             llm.Provider   // nil = LLM pass off (T26 uses it)
@@ -91,6 +93,12 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 		}
 		outDir = filepath.Join(base, ".paircli", fmt.Sprintf("pr-%d", o.Number))
 	}
+	// Create it now rather than leaving it to render.Write: the snapshot is
+	// written into outDir earlier in the pipeline, and on a first scan the
+	// folder does not exist yet.
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
+		return nil, fmt.Errorf("scan: create output folder %s: %w", outDir, err)
+	}
 
 	// 3. Discover sessions inside the PR's time window.
 	w := link.WindowFor(p, cfg)
@@ -119,6 +127,26 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	// 9. Deterministic detectors.
 	sigs := engine.Run(ec)
 
+	// The snapshot records everything the deterministic pass used. It is taken
+	// here, before the LLM pass, so it is a complete replay input: judging can
+	// be redone from it later, or on another machine. Judgments is therefore
+	// nil in a snapshot a scan writes.
+	if o.Snapshot {
+		if err := snapshot.Write(outDir, snapshot.Build(snapshot.Input{
+			PR:           p,
+			Sessions:     res.Sessions,
+			Attribution:  attr,
+			Links:        res.Links,
+			SessionLinks: res.SessionLinks,
+			Dropped:      res.Dropped,
+			Unattributed: res.Unattributed,
+			Config:       cfg,
+			Tool:         "paircli " + o.Version,
+		})); err != nil {
+			return nil, err
+		}
+	}
+
 	// T26: LLM pass. Without a provider the three inferred signals (DEC-3,
 	// CON-1, CON-3) stay unknown, and the report lists them under "Not
 	// available" with the hint to run with --llm. With one, the judge turns the
@@ -126,15 +154,21 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	// inferred signals are recomputed from it, and the judgments are folded
 	// back into the other signals.
 	if o.LLM != nil {
-		j, err := judge.Run(ctx, o.LLM, ec, sigs, cfg)
+		j, stats, err := judge.RunFull(ctx, o.LLM, ec, sigs, cfg)
 		if err != nil {
 			// Keep the deterministic output and note the failure on AUTH-2.
-			sigs = noteLLMError(sigs, err.Error())
-			j = nil
+			sigs = noteLLMError(sigs, []string{err.Error()})
+			j, stats = nil, nil
+		} else if j != nil && len(j.Errors) > 0 {
+			// Some jobs failed while others answered. The signals those jobs
+			// feed are marked unknown below; record the errors here too, so the
+			// report footer says the pass was incomplete rather than clean.
+			sigs = noteLLMError(sigs, j.Errors)
 		}
 		ec.Judgments = j
 		if j != nil {
 			sigs = replaceByID(sigs, engine.RunIDs(ec, inferredIDs...))
+			sigs = markUnresolved(sigs, stats)
 			sigs = enrich.Apply(ec, sigs)
 		}
 	}
@@ -202,7 +236,10 @@ func replaceByID(sigs []model.Signal, repl []model.Signal) []model.Signal {
 
 // noteLLMError records a failed LLM pass on AUTH-2's Data, the signal the
 // report footer is built from, and returns sigs unchanged otherwise.
-func noteLLMError(sigs []model.Signal, msg string) []model.Signal {
+func noteLLMError(sigs []model.Signal, msgs []string) []model.Signal {
+	if len(msgs) == 0 {
+		return sigs
+	}
 	for i := range sigs {
 		if sigs[i].ID != "AUTH-2" {
 			continue
@@ -211,9 +248,33 @@ func noteLLMError(sigs []model.Signal, msg string) []model.Signal {
 		for k, v := range sigs[i].Data {
 			data[k] = v
 		}
-		data["llm_errors"] = []string{msg}
+		data["llm_errors"] = msgs
 		sigs[i].Data = data
 		break
+	}
+	return sigs
+}
+
+// markUnresolved replaces each inferred signal whose judgment input was
+// unusable with an unknown signal. Without it, a job that failed or whose items
+// were all dropped by validation leaves the signal reporting clear — which
+// reads as "checked, nothing found" when the truth is "nothing was checked".
+//
+// Only the inferred signals are touched. Every other signal carries a
+// deterministic measurement that an unusable judgment result must not
+// overwrite, and marking those unknown would throw away real evidence.
+func markUnresolved(sigs []model.Signal, stats *judge.Stats) []model.Signal {
+	for _, u := range stats.Unresolved() {
+		for i := range sigs {
+			if sigs[i].ID != u.Signal {
+				continue
+			}
+			sigs[i] = engine.Unknown(u.Signal, u.Reason)
+			if u.Attempted > 0 {
+				sigs[i].Data = map[string]any{"llm_dropped": u.Attempted}
+			}
+			break
+		}
 	}
 	return sigs
 }

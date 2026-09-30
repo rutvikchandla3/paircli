@@ -43,6 +43,15 @@ go through this one entry point.
    `enrich.Apply` folds the judgments back into the deterministic signals.
    Without a provider those three signals render as "Not available — run
    with --llm".
+   The pass is split so the prompts and the validation are separable:
+   `judge.BuildPrompts` prepares the bundle and the four job requests,
+   `Set.Apply` validates and merges replies. `judge.RunFull` drives both
+   through a provider and also reports, per job and per item kind, what
+   could not be used. An inferred signal whose job failed, or whose items
+   were all dropped because none could be cited, reports `unknown` rather
+   than `clear`: "we could not check" is not "we checked and found
+   nothing". Failures are noted on AUTH-2's `Data["llm_errors"]`, whether
+   the pass failed entirely or only in part.
 9. **Render** — `render.BuildReport` and `render.Write` produce the output
    folder `.paircli/pr-<n>/`: `report.md`, `comment.md`, `signals.json`,
    `authorship.json` and `sessions/<harness>-<id>.json`. Output is
@@ -157,6 +166,7 @@ generated files, excluded from coverage ratios).
 | `internal/classify` | Command, path, check and secret-shape classification |
 | `internal/render` | `report.md`, `comment.md`, `signals.json`, `authorship.json`, session files |
 | `internal/agenttrace` | Agent Trace export |
+| `internal/snapshot` | Replay record: serialize a scan, rebuild its `engine.Context` |
 | `internal/gitinfo` | Git helpers (repo root, HEAD, remotes) |
 | `internal/testkit` | Session/PR/context builders for tests |
 | `internal/e2e` | Golden end-to-end scenario (`testdata/golden/`) |
@@ -171,6 +181,7 @@ generated files, excluded from coverage ratios).
   signals.json              # full structured report, the machine contract
   authorship.json           # per-file, per-line attribution
   agent-trace.json          # vendor-neutral Agent Trace record
+  snapshot.json             # full replay record (--snapshot)
   sessions/<harness>-<id>.json   # one normalized session record per linked session
 ```
 

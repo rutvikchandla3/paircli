@@ -7,7 +7,6 @@ package judge
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/rutvikchandla3/paircli/internal/config"
@@ -23,31 +22,34 @@ import (
 // provider error on one job is recorded in Judgments.Errors and the remaining
 // jobs still run; Run returns an error only when every job failed.
 func Run(ctx context.Context, p llm.Provider, ec *engine.Context, signals []model.Signal, cfg *config.Config) (*model.Judgments, error) {
+	j, _, err := RunFull(ctx, p, ec, signals, cfg)
+	return j, err
+}
+
+// RunFull is Run plus the accounting. Stats says which jobs produced nothing
+// usable, and per item kind how many items a job offered versus how many
+// survived validation, so a caller can tell "nothing was found" apart from
+// "nothing could be checked".
+//
+// It is the provider-driven half of the pass. A caller that runs the prompts
+// elsewhere uses BuildPrompts and Set.Apply instead, and gets the same Stats.
+func RunFull(ctx context.Context, p llm.Provider, ec *engine.Context, signals []model.Signal, cfg *config.Config) (*model.Judgments, *Stats, error) {
 	if p == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
-	if cfg == nil {
-		cfg = config.Default()
-	}
-
-	bundle, ids := BuildBundle(ec, signals, cfg.LLM.MaxInputChars)
-	raw, err := json.Marshal(bundle)
+	set, err := BuildPrompts(ec, signals, cfg)
 	if err != nil {
-		return nil, fmt.Errorf("judge: marshal fact bundle: %w", err)
+		return nil, nil, err
 	}
 
-	j := &model.Judgments{Model: cfg.LLM.Model}
-	v := &validator{ids: ids, ec: ec}
+	results := make([]JobResult, len(set.Prompts))
+	for i, jp := range set.Prompts {
+		results[i] = fetch(ctx, p, jp)
+	}
+	stats := set.Apply(results)
 
-	specs := jobSpecs()
-	failed := 0
-	for _, jb := range specs {
-		if !jb.run(ctx, p, raw, cfg, j, v) {
-			failed++
-		}
+	if stats.Failed() == len(set.Prompts) {
+		return nil, nil, fmt.Errorf("judge: all %d jobs failed", len(set.Prompts))
 	}
-	if failed == len(specs) {
-		return nil, fmt.Errorf("judge: all %d jobs failed", failed)
-	}
-	return j, nil
+	return set.Judgments(), stats, nil
 }

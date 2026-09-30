@@ -10,7 +10,9 @@ import (
 	"time"
 
 	"github.com/rutvikchandla3/paircli/internal/config"
+	"github.com/rutvikchandla3/paircli/internal/engine"
 	"github.com/rutvikchandla3/paircli/internal/model"
+	"github.com/rutvikchandla3/paircli/internal/snapshot"
 )
 
 // scanRunner is a pr.Runner that serves canned gh output and records calls.
@@ -318,4 +320,68 @@ func TestPostComment_CreateAndUpdate(t *testing.T) {
 			t.Fatal("expected an error for a missing comment body")
 		}
 	})
+}
+
+// TestRun_SnapshotOnFreshOutDir is a regression test. The snapshot is written
+// early in the pipeline, before anything else creates the output folder, so a
+// scan into a folder that does not exist yet must still succeed. Both the
+// snapshot's own tests and the e2e run happened to use folders that already
+// existed, which is how this slipped through.
+func TestRun_SnapshotOnFreshOutDir(t *testing.T) {
+	repoRoot := t.TempDir()
+	scanGitRepo(t, repoRoot, "git@github.com:acme/shop.git")
+
+	projects := t.TempDir()
+	scanTranscript(t, projects, repoRoot)
+
+	r := newScanRunner()
+	r.responses[scanPRArg] = []byte(scanGHView)
+	r.responses[scanDiffArg] = []byte(scanDiff)
+
+	// Neither this folder nor its parent exists yet.
+	outDir := filepath.Join(t.TempDir(), "nested", "pr-7")
+	res, err := Run(context.Background(), Options{
+		Repo:            "acme/shop",
+		Number:          7,
+		CWD:             repoRoot,
+		OutDir:          outDir,
+		Runner:          r,
+		Config:          scanConfig(t, projects),
+		NoHooks:         true,
+		NoCommitPatches: true,
+		Snapshot:        true,
+		Now:             time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
+		Version:         "0.0.0-test",
+	})
+	if err != nil {
+		t.Fatalf("Run with --snapshot into a folder that does not exist yet: %v", err)
+	}
+
+	snap, err := snapshot.Read(filepath.Join(res.OutDir, snapshot.FileName))
+	if err != nil {
+		t.Fatalf("reading the snapshot: %v", err)
+	}
+	if got, want := snap.Tool, "paircli 0.0.0-test"; got != want {
+		t.Errorf("snapshot tool = %q, want %q", got, want)
+	}
+	if len(snap.Sessions) != 1 {
+		t.Errorf("snapshot sessions = %d, want 1", len(snap.Sessions))
+	}
+
+	// The snapshot must reproduce the signals the scan itself reported.
+	ec, err := snap.Context()
+	if err != nil {
+		t.Fatalf("Context: %v", err)
+	}
+	replayed, err := json.Marshal(engine.Run(ec))
+	if err != nil {
+		t.Fatalf("marshalling replayed signals: %v", err)
+	}
+	reported, err := json.Marshal(res.Report.Signals)
+	if err != nil {
+		t.Fatalf("marshalling reported signals: %v", err)
+	}
+	if string(replayed) != string(reported) {
+		t.Error("the snapshot does not reproduce the scan's own signals")
+	}
 }

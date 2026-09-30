@@ -1,6 +1,7 @@
 package verification
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/rutvikchandla3/paircli/internal/classify"
@@ -92,8 +93,22 @@ func (d ver6) Detect(c *engine.Context) model.Signal {
 		}
 	}
 
-	// Process open errors (latest diagnostics per PR file with errors)
-	for file, itemPtr := range diagnosticsPerFile {
+	// Process open errors (latest diagnostics per PR file with errors).
+	//
+	// The files are visited in sorted order rather than by ranging the map
+	// directly: Go randomizes map iteration, which would order both the
+	// findings and Data["open_errors"] differently on every run and break the
+	// guarantee that identical input produces byte-identical output. The bug
+	// only shows up with two or more files carrying errors, which is why a
+	// one-file fixture never caught it.
+	files := make([]string, 0, len(diagnosticsPerFile))
+	for file := range diagnosticsPerFile {
+		files = append(files, file)
+	}
+	sort.Strings(files)
+
+	for _, file := range files {
+		itemPtr := diagnosticsPerFile[file]
 		diag := itemPtr.E.Diagnostics
 		if diag.Errors > 0 {
 			openErrors = append(openErrors, map[string]any{"file": file, "errors": diag.Errors})

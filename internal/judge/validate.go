@@ -3,6 +3,7 @@ package judge
 import (
 	"encoding/json"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/rutvikchandla3/paircli/internal/engine"
@@ -110,11 +111,50 @@ var (
 	eventIDPattern = regexp.MustCompile(`^ev:(.+)/(.+)$`)
 )
 
+// Item kinds are the units Stats.Items counts. One job can offer items of more
+// than one kind (the scope job feeds scope, plan_drift and rule_violations), so
+// the accounting is per kind rather than per job.
+const (
+	kindClaims         = "claims"
+	kindAskSummary     = "ask_summary"
+	kindDecisions      = "decisions"
+	kindAbandoned      = "abandoned"
+	kindCorrections    = "corrections"
+	kindScope          = "scope"
+	kindPlanDrift      = "plan_drift"
+	kindRuleViolations = "rule_violations"
+	kindCaveats        = "caveats"
+	kindLostConstraint = "lost_constraints"
+)
+
 // validator checks a reply against the fact bundle. Every item must cite at
 // least one id that appears in the bundle; anything else is dropped.
 type validator struct {
 	ids map[string]bool
 	ec  *engine.Context
+	// stats is optional: a nil Stats means "do not count". Direct tests build
+	// validators without it.
+	stats *Stats
+}
+
+// attempted records that a job offered n items of one kind.
+func (v *validator) attempted(kind string, n int) {
+	if v.stats == nil || n == 0 {
+		return
+	}
+	cur := v.stats.Items[kind]
+	cur[0] += n
+	v.stats.Items[kind] = cur
+}
+
+// kept records that one item of kind survived validation.
+func (v *validator) kept(kind string) {
+	if v.stats == nil {
+		return
+	}
+	cur := v.stats.Items[kind]
+	cur[1]++
+	v.stats.Items[kind] = cur
 }
 
 // citesOK reports whether cites is non-empty and every id is in the bundle.
@@ -165,6 +205,66 @@ func (v *validator) linesOK(lines string) bool {
 	return lines == "" || linesPattern.MatchString(lines)
 }
 
+// hunkLinesOK reports whether file and lines name a range that lies inside a
+// real hunk of the PR diff. An empty file or lines is not checked: a
+// missing_step drift item legitimately carries neither.
+//
+// linesOK only checks the shape of the string, so without this a model could
+// return a well-formed range that matches no hunk and still produce an anchor —
+// one pointing at lines the PR never touched. The check is containment rather
+// than equality against hunkID because the prompt allows a bare line ("13" for
+// a hunk spanning 12-15) and because a deletion-only hunk has NewLines 0 and so
+// a one-line span, which a bare number should still match.
+//
+// It reads ec.PR rather than the bundle's hunk ids on purpose: the bundle
+// trims whole files away as its budget shrinks, so validating against it would
+// make the answer depend on how big the prompt happened to be.
+func (v *validator) hunkLinesOK(file, lines string) bool {
+	if file == "" || lines == "" {
+		return true
+	}
+	lo, hi, ok := parseLines(lines)
+	if !ok {
+		return false
+	}
+	var f *model.DiffFile
+	if v.ec != nil && v.ec.PR != nil {
+		f = v.ec.PR.File(file)
+	}
+	if f == nil {
+		return false
+	}
+	for _, h := range f.Hunks {
+		start := h.NewStart
+		end := start + h.NewLines - 1
+		if end < start {
+			end = start
+		}
+		if lo >= start && hi <= end {
+			return true
+		}
+	}
+	return false
+}
+
+// parseLines parses "N" or "N-M" into an inclusive range. It is called after
+// linesOK, so the shape is already known to be one of those two.
+func parseLines(lines string) (int, int, bool) {
+	if i := strings.IndexByte(lines, '-'); i >= 0 {
+		lo, errLo := strconv.Atoi(lines[:i])
+		hi, errHi := strconv.Atoi(lines[i+1:])
+		if errLo != nil || errHi != nil || hi < lo {
+			return 0, 0, false
+		}
+		return lo, hi, true
+	}
+	n, err := strconv.Atoi(lines)
+	if err != nil {
+		return 0, 0, false
+	}
+	return n, n, true
+}
+
 // isPRFile reports whether f names a file in the PR diff.
 func (v *validator) isPRFile(f string) bool {
 	if f == "" || v.ec == nil || v.ec.PR == nil {
@@ -206,6 +306,7 @@ func renderCites(cites []string) []string {
 
 func applyClaims(j *model.Judgments, reply any, v *validator) {
 	r := reply.(*claimsReply)
+	v.attempted(kindClaims, len(r.Claims))
 	for _, c := range r.Claims {
 		if !claimSources[c.Source] || !claimVerdicts[c.Verdict] {
 			continue
@@ -220,12 +321,16 @@ func applyClaims(j *model.Judgments, reply any, v *validator) {
 			Reason:  clip(c.Reason, 300),
 			Cites:   renderCites(c.Cites),
 		})
+		v.kept(kindClaims)
 	}
 }
 
 func applyStory(j *model.Judgments, reply any, v *validator) {
 	r := reply.(*storyReply)
 
+	if r.AskSummary != nil {
+		v.attempted(kindAskSummary, 1)
+	}
 	if a := r.AskSummary; a != nil && v.citesOK(a.Cites) {
 		as := &model.AskSummary{
 			Ask:        clip(a.Ask, 200),
@@ -236,8 +341,10 @@ func applyStory(j *model.Judgments, reply any, v *validator) {
 			as.Refinements = append(as.Refinements, clip(ref, 200))
 		}
 		j.AskSummary = as
+		v.kept(kindAskSummary)
 	}
 
+	v.attempted(kindDecisions, len(r.Decisions))
 	for _, d := range r.Decisions {
 		if !decisionBys[d.By] || !v.citesOK(d.Cites) {
 			continue
@@ -248,8 +355,10 @@ func applyStory(j *model.Judgments, reply any, v *validator) {
 			By:     d.By,
 			Cites:  renderCites(d.Cites),
 		})
+		v.kept(kindDecisions)
 	}
 
+	v.attempted(kindAbandoned, len(r.Abandoned))
 	for _, a := range r.Abandoned {
 		if !v.citesOK(a.Cites) {
 			continue
@@ -263,8 +372,10 @@ func applyStory(j *model.Judgments, reply any, v *validator) {
 			Summary: clip(a.Summary, 200),
 			Cites:   renderCites(a.Cites),
 		})
+		v.kept(kindAbandoned)
 	}
 
+	v.attempted(kindCorrections, len(r.Corrections))
 	for _, c := range r.Corrections {
 		ref, ok := v.eventRef(c.Event)
 		if !ok || !v.citesOK(c.Cites) {
@@ -276,14 +387,17 @@ func applyStory(j *model.Judgments, reply any, v *validator) {
 			About:        clip(c.About, 200),
 			Cites:        renderCites(c.Cites),
 		})
+		v.kept(kindCorrections)
 	}
 }
 
 func applyScope(j *model.Judgments, reply any, v *validator) {
 	r := reply.(*scopeReply)
 
+	v.attempted(kindScope, len(r.Scope))
 	for _, s := range r.Scope {
-		if !v.isPRFile(s.File) || !v.linesOK(s.Lines) || !v.citesOK(s.Cites) {
+		if !v.isPRFile(s.File) || !v.linesOK(s.Lines) ||
+			!v.hunkLinesOK(s.File, s.Lines) || !v.citesOK(s.Cites) {
 			continue
 		}
 		j.Scope = append(j.Scope, model.ScopeItem{
@@ -293,13 +407,15 @@ func applyScope(j *model.Judgments, reply any, v *validator) {
 			TraceTo: clip(s.TraceTo, 200),
 			Cites:   renderCites(s.Cites),
 		})
+		v.kept(kindScope)
 	}
 
+	v.attempted(kindPlanDrift, len(r.PlanDrift))
 	for _, d := range r.PlanDrift {
 		if !driftKinds[d.Kind] || !v.linesOK(d.Lines) || !v.citesOK(d.Cites) {
 			continue
 		}
-		if d.File != "" && !v.isPRFile(d.File) {
+		if d.File != "" && (!v.isPRFile(d.File) || !v.hunkLinesOK(d.File, d.Lines)) {
 			continue
 		}
 		j.PlanDrift = append(j.PlanDrift, model.DriftItem{
@@ -309,10 +425,13 @@ func applyScope(j *model.Judgments, reply any, v *validator) {
 			Lines: d.Lines,
 			Cites: renderCites(d.Cites),
 		})
+		v.kept(kindPlanDrift)
 	}
 
+	v.attempted(kindRuleViolations, len(r.RuleViolations))
 	for _, rv := range r.RuleViolations {
-		if !v.isPRFile(rv.File) || !v.linesOK(rv.Lines) || !v.citesOK(rv.Cites) {
+		if !v.isPRFile(rv.File) || !v.linesOK(rv.Lines) ||
+			!v.hunkLinesOK(rv.File, rv.Lines) || !v.citesOK(rv.Cites) {
 			continue
 		}
 		j.RuleViolations = append(j.RuleViolations, model.RuleViolation{
@@ -321,21 +440,26 @@ func applyScope(j *model.Judgments, reply any, v *validator) {
 			Lines: rv.Lines,
 			Cites: renderCites(rv.Cites),
 		})
+		v.kept(kindRuleViolations)
 	}
 }
 
 func applyCaveats(j *model.Judgments, reply any, v *validator) {
 	r := reply.(*caveatsReply)
+	v.attempted(kindCaveats, len(r.Caveats))
 	for _, c := range r.Caveats {
 		if !v.citesOK(c.Cites) {
 			continue
 		}
 		j.Caveats = append(j.Caveats, model.CaveatItem{Text: clip(c.Text, 200), Cites: renderCites(c.Cites)})
+		v.kept(kindCaveats)
 	}
+	v.attempted(kindLostConstraint, len(r.LostConstraints))
 	for _, l := range r.LostConstraints {
 		if !v.citesOK(l.Cites) {
 			continue
 		}
 		j.LostConstraints = append(j.LostConstraints, model.LostConstraint{Constraint: clip(l.Constraint, 200), Cites: renderCites(l.Cites)})
+		v.kept(kindLostConstraint)
 	}
 }

@@ -60,32 +60,16 @@ func (jb jobSpec) request(cfg *config.Config, raw []byte) llm.Request {
 	}
 }
 
-// run executes one job. A reply that is not valid JSON is retried exactly once
-// with retryPrompt appended; a provider error, or two invalid replies, is
-// recorded in j.Errors. It reports whether the job produced a result.
+// run executes one job through a provider. A reply that is not valid JSON is
+// retried exactly once with retryPrompt appended; a provider error, or two
+// invalid replies, is recorded in j.Errors. It reports whether the job produced
+// a result.
+//
+// It is the single-job form of Set.Apply, kept so one job can be driven
+// directly; the fetch-and-merge rule itself lives in fetch/applyResult.
 func (jb jobSpec) run(ctx context.Context, p llm.Provider, raw []byte, cfg *config.Config,
 	j *model.Judgments, v *validator) bool {
 
-	req := jb.request(cfg, raw)
-	resp, err := p.Complete(ctx, req)
-	if err != nil {
-		j.Errors = append(j.Errors, jb.name+": "+err.Error())
-		return false
-	}
-	reply := jb.newReply()
-	if !decode(resp.Text, reply) {
-		req.Prompt += "\n\n" + retryPrompt
-		resp, err = p.Complete(ctx, req)
-		if err != nil {
-			j.Errors = append(j.Errors, jb.name+": "+err.Error())
-			return false
-		}
-		reply = jb.newReply()
-		if !decode(resp.Text, reply) {
-			j.Errors = append(j.Errors, jb.name+": invalid JSON")
-			return false
-		}
-	}
-	jb.apply(j, reply, v)
-	return true
+	jp := newJobPrompt(jb, cfg, raw)
+	return applyResult(j, v, jp, fetch(ctx, p, jp))
 }

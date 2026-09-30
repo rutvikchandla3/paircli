@@ -88,6 +88,58 @@ func TestLoad_Merge(t *testing.T) {
 	}
 }
 
+// TestLoad_LLMGateway covers the "http" provider's three keys. The credential
+// itself is not among them: auth_token_env names the variable to read it from,
+// so the token never reaches this file or the snapshot that mirrors it.
+func TestLoad_LLMGateway(t *testing.T) {
+	tempdir := t.TempDir()
+	configContent := `{
+		"llm": {
+			"provider": "http",
+			"base_url": "https://gateway.internal",
+			"auth_token_env": "ADE_GATEWAY_TOKEN",
+			"headers": {"x-team": "platform", "x-api-key": "static"}
+		}
+	}`
+	if err := os.WriteFile(filepath.Join(tempdir, FileName), []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config file: %v", err)
+	}
+
+	cfg, err := Load(tempdir)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if cfg.LLM.Provider != "http" {
+		t.Errorf("LLM.Provider = %q, want http", cfg.LLM.Provider)
+	}
+	if cfg.LLM.BaseURL != "https://gateway.internal" {
+		t.Errorf("LLM.BaseURL = %q", cfg.LLM.BaseURL)
+	}
+	if cfg.LLM.AuthTokenEnv != "ADE_GATEWAY_TOKEN" {
+		t.Errorf("LLM.AuthTokenEnv = %q", cfg.LLM.AuthTokenEnv)
+	}
+	if got := cfg.LLM.Headers["x-team"]; got != "platform" {
+		t.Errorf("LLM.Headers[x-team] = %q, want platform", got)
+	}
+	if got := cfg.LLM.Headers["x-api-key"]; got != "static" {
+		t.Errorf("LLM.Headers[x-api-key] = %q, want static", got)
+	}
+	// The keys are additive: a config that sets none of them still gets the
+	// defaults for everything else.
+	if cfg.LLM.Model != DefaultModel || cfg.LLM.MaxInputChars != 200000 {
+		t.Errorf("other LLM settings = %q/%d, want the defaults", cfg.LLM.Model, cfg.LLM.MaxInputChars)
+	}
+}
+
+// TestLoad_LLMGatewayDefaults checks that an untouched config leaves the
+// gateway keys empty, which is what keeps "http" unconfigured until it is.
+func TestLoad_LLMGatewayDefaults(t *testing.T) {
+	cfg := Default()
+	if cfg.LLM.BaseURL != "" || cfg.LLM.AuthTokenEnv != "" || len(cfg.LLM.Headers) != 0 {
+		t.Errorf("defaults = %q/%q/%v, want empty", cfg.LLM.BaseURL, cfg.LLM.AuthTokenEnv, cfg.LLM.Headers)
+	}
+}
+
 func TestLoad_BadDuration(t *testing.T) {
 	tempdir := t.TempDir()
 	configPath := filepath.Join(tempdir, FileName)

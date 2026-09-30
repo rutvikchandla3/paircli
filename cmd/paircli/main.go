@@ -21,6 +21,8 @@ func main() {
 	switch os.Args[1] {
 	case "scan":
 		err = runScan(os.Args[2:])
+	case "judge":
+		err = runJudge(os.Args[2:])
 	case "hook":
 		err = runHook(os.Args[2:])
 	case "doctor":
@@ -49,6 +51,8 @@ func usage() {
 Usage:
   paircli scan <pr-number-or-url> [flags]   discover linked agent sessions, run the
                                             signal pipeline, write the output folder
+  paircli judge <snapshot.json> [flags]     run the grounded LLM pass over a scan's
+                                            snapshot and rewrite its report files
   paircli hook install <harness>            install hooks for one harness (claude-code | codex | pi)
   paircli hook uninstall <harness>          remove that harness's hooks
   paircli hook <harness> <event>            internal: invoked BY the installed hook
@@ -59,7 +63,7 @@ scan flags:
   --out DIR               output folder (default <repo>/.paircli/pr-<n>)
   --post                  create or update the PR comment
   --include-prompts       let comment.md carry prompt text
-  --llm PROVIDER          none | anthropic | claude-cli (default: config)
+  --llm PROVIDER          none | anthropic | claude-cli | pi | http (default: config)
   --model MODEL           provider model (default: config)
   --no-hooks              ignore hook-log records
   --no-commit-patches     skip per-commit patches
@@ -67,6 +71,14 @@ scan flags:
   --snapshot              also write snapshot.json, a full replay record
   --window-before DUR     session search window before the first commit (default 48h)
   --window-after DUR      session search window after the last commit (default 2h)
+  --json                  print signals.json to stdout
+
+judge flags:
+  --out DIR               output folder (default: the snapshot's own folder)
+  --llm PROVIDER          none | anthropic | claude-cli | pi | http (default: the snapshot's config)
+  --model MODEL           provider model (default: the snapshot's config)
+  --no-agent-trace        skip agent-trace.json
+  --force                 replay even if another paircli version wrote the snapshot
   --json                  print signals.json to stdout
 
 See docs/SIGNALS.md and docs/ARCHITECTURE.md for the full design.

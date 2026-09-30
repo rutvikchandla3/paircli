@@ -211,6 +211,28 @@ func doctorLLM(cfg *config.Config) string {
 			state = "claude binary found"
 		}
 		return fmt.Sprintf("claude-cli (model %s, %s)", model, state)
+	case "pi":
+		state := "pi binary not found"
+		if _, err := doctorLookPath("pi"); err == nil {
+			state = "pi binary found"
+		}
+		return fmt.Sprintf("pi (model %s, %s)", model, state)
+	case "http":
+		// Only the variable's name is ever reported: doctor must not print a
+		// credential.
+		state := "no base_url"
+		if cfg.LLM.BaseURL != "" {
+			state = cfg.LLM.BaseURL
+		}
+		switch {
+		case cfg.LLM.AuthTokenEnv == "":
+			state += ", no token configured"
+		case os.Getenv(cfg.LLM.AuthTokenEnv) == "":
+			state += fmt.Sprintf(", %s not set", cfg.LLM.AuthTokenEnv)
+		default:
+			state += fmt.Sprintf(", %s set", cfg.LLM.AuthTokenEnv)
+		}
+		return fmt.Sprintf("http (model %s, %s)", model, state)
 	default:
 		return fmt.Sprintf("%s (model %s, unknown provider)", provider, model)
 	}

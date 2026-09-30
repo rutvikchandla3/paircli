@@ -34,10 +34,13 @@ type claudeCLIProvider struct {
 }
 
 func newClaudeCLI(bin string, cfg config.LLM) *claudeCLIProvider {
-	return &claudeCLIProvider{bin: bin, model: cfg.Model, run: runClaudeCLI}
+	return &claudeCLIProvider{bin: bin, model: cfg.Model, run: runCLI}
 }
 
-func runClaudeCLI(ctx context.Context, bin string, args []string, stdin string) ([]byte, []byte, error) {
+// runCLI runs bin with args, feeding stdin, and returns its streams. It is the
+// shared shell-out of the provider CLIs (claude-cli, pi); tests point the
+// providers' own run field at a fixture script instead.
+func runCLI(ctx context.Context, bin string, args []string, stdin string) ([]byte, []byte, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Stdin = strings.NewReader(stdin)
 	var stdout, stderr bytes.Buffer

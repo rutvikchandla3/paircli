@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -11,7 +10,6 @@ import (
 	"time"
 
 	"github.com/rutvikchandla3/paircli/internal/config"
-	"github.com/rutvikchandla3/paircli/internal/engine"
 	"github.com/rutvikchandla3/paircli/internal/llm"
 	"github.com/rutvikchandla3/paircli/internal/pr"
 	"github.com/rutvikchandla3/paircli/internal/scan"
@@ -52,7 +50,7 @@ func parseScanArgs(args []string) (scanArgs, error) {
 	fs.StringVar(&a.Out, "out", "", "output folder")
 	fs.BoolVar(&a.Post, "post", false, "create or update the PR comment")
 	fs.BoolVar(&a.IncludePrompts, "include-prompts", false, "let comment.md carry prompt text")
-	fs.StringVar(&a.LLM, "llm", "", "LLM provider: none | anthropic | claude-cli")
+	fs.StringVar(&a.LLM, "llm", "", "LLM provider: none | anthropic | claude-cli | pi | http")
 	fs.StringVar(&a.Model, "model", "", "LLM model")
 	fs.BoolVar(&a.NoHooks, "no-hooks", false, "ignore hook-log records")
 	fs.BoolVar(&a.NoCommitPatches, "no-commit-patches", false, "skip per-commit patches")
@@ -127,21 +125,5 @@ func runScan(args []string) error {
 	if err != nil {
 		return err
 	}
-
-	cov := res.Report.Coverage
-	summary := fmt.Sprintf("paircli: wrote %s — %d sessions, %s of changed lines explained, %d alerts",
-		res.OutDir, cov.Sessions, engine.Pct(cov.LinesExplained, cov.LinesTotal), res.Alerts)
-
-	if !a.JSON {
-		fmt.Println(summary)
-		return nil
-	}
-	// Keep stdout valid JSON for `--json | jq`.
-	fmt.Fprintln(os.Stderr, summary)
-	out, err := json.MarshalIndent(res.Report, "", "  ")
-	if err != nil {
-		return err
-	}
-	fmt.Println(string(out))
-	return nil
+	return printResult(res, a.JSON)
 }

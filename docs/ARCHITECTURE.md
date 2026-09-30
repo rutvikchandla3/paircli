@@ -36,8 +36,8 @@ go through this one entry point.
 7. **Re-attribute over linked sessions only**, then `engine.NewContext` and
    `engine.Run` execute the 27 deterministic detectors (see
    `internal/detect/`, one file per signal, self-registering via `init()`).
-8. **Optional judge** — with a provider configured (`--llm anthropic` or
-   `--llm claude-cli`, or `llm.provider` in config), `judge.Run` builds a
+8. **Optional judge** — with a provider configured (`--llm` or `llm.provider`
+   in config: `anthropic`, `http`, `claude-cli` or `pi`), `judge.Run` builds a
    fact bundle and asks the LLM for grounded judgments; the three inferred
    signals (DEC-3, CON-1, CON-3) are recomputed from them and
    `enrich.Apply` folds the judgments back into the deterministic signals.
@@ -62,6 +62,36 @@ go through this one entry point.
 11. **Post** — with `--post`, `scan` upserts one PR comment via `gh`: the
     comment whose body starts with `<!-- paircli -->` is updated in place,
     otherwise a new comment is posted.
+
+## Replaying a scan: `paircli judge`
+
+Step 8 needs nothing that steps 1–7 produce beyond the read-only
+`engine.Context`, and steps 9–10 are pure functions of that context and the
+signals. `snapshot.Build`/`snapshot.Write` (step 8's first half, under
+`--snapshot`) freeze exactly that input, so the whole tail of the pipeline can
+run again later, or on another machine, from the record alone.
+
+`paircli judge <snapshot.json>` is that replay: `snapshot.Read` →
+`Snapshot.Context()` → `engine.Run` → `judge.RunFull` → merge → render. It
+reads no network, no repository and no harness session store, and it defaults
+`--out` to the snapshot's own folder so the judged report lands where the scan
+would have written it. `scan.Replay` is the library entry point.
+
+Two properties make it a replay rather than a re-implementation:
+
+- **The merge is one function.** `scan.Merge` applies a pass to a signal set
+  — note the failure on AUTH-2, recompute the inferred signals, mark an
+  unusable one unknown, fold the rest in through `enrich` — and both the live
+  pipeline and the replay call it, so their orderings cannot drift apart.
+- **The deterministic signals are recomputed, never stored.** They are a pure
+  function of the snapshot, so replaying one with no provider reproduces the
+  scan's whole output folder byte for byte (the e2e test asserts exactly
+  that). The record stays the single input; a snapshot is not a cache of its
+  own report.
+
+A snapshot another paircli version wrote is refused unless `--force`: the
+signals depend on the detector code in the running binary, which the record
+pins but cannot reproduce.
 
 ## Three capture paths
 
@@ -152,7 +182,7 @@ generated files, excluded from coverage ratios).
 | `internal/model` | Frozen types: sessions, events, PRs, signals, attribution, reports |
 | `internal/config` | `.paircli.json` + defaults |
 | `internal/redact` | Redaction seam (currently a no-op — see SIGNALS.md "Deferred") |
-| `internal/scan` | The pipeline as a library (`Run`) |
+| `internal/scan` | The pipeline as a library (`Run`), and its replay from a snapshot (`Replay`) |
 | `internal/link` | Discovery, selection, commit linking |
 | `internal/attrib` | Line attribution, commit↔session map |
 | `internal/pr`, `internal/diff` | `gh` fetch and unified-diff parsing |
@@ -160,7 +190,7 @@ generated files, excluded from coverage ratios).
 | `internal/detect/<question>` | One detector file per signal, self-registering |
 | `internal/judge` | Fact bundle, prompts, response validation → `model.Judgments` |
 | `internal/enrich` | Folds judgments into deterministic signals |
-| `internal/llm` | Providers: Anthropic API, `claude` CLI |
+| `internal/llm` | Providers: Anthropic Messages (`anthropic`, and the configurable `http` gateway), `claude` and `pi` CLIs |
 | `internal/claudecode`, `internal/codex`, `internal/pi` | Per-harness transcript parsers + hook install/handlers (Pi: extension installer) |
 | `internal/hooklog` | Hook record log: append, read, merge into sessions |
 | `internal/classify` | Command, path, check and secret-shape classification |
@@ -170,7 +200,7 @@ generated files, excluded from coverage ratios).
 | `internal/gitinfo` | Git helpers (repo root, HEAD, remotes) |
 | `internal/testkit` | Session/PR/context builders for tests |
 | `internal/e2e` | Golden end-to-end scenario (`testdata/golden/`) |
-| `cmd/paircli` | CLI: `scan`, `hook`, `doctor`, `version` |
+| `cmd/paircli` | CLI: `scan`, `judge`, `hook`, `doctor`, `version` |
 
 ## Output folder
 

@@ -28,6 +28,7 @@ type scanArgs struct {
 	NoHooks         bool
 	NoCommitPatches bool
 	NoAgentTrace    bool
+	Snapshot        bool
 	WindowBefore    time.Duration
 	WindowAfter     time.Duration
 	JSON            bool
@@ -56,6 +57,7 @@ func parseScanArgs(args []string) (scanArgs, error) {
 	fs.BoolVar(&a.NoHooks, "no-hooks", false, "ignore hook-log records")
 	fs.BoolVar(&a.NoCommitPatches, "no-commit-patches", false, "skip per-commit patches")
 	fs.BoolVar(&a.NoAgentTrace, "no-agent-trace", false, "skip agent-trace.json")
+	fs.BoolVar(&a.Snapshot, "snapshot", false, "also write snapshot.json, a full replay record")
 	fs.DurationVar(&a.WindowBefore, "window-before", 0, "session search window before the first commit")
 	fs.DurationVar(&a.WindowAfter, "window-after", 0, "session search window after the last commit")
 	fs.BoolVar(&a.JSON, "json", false, "print signals.json to stdout")
@@ -116,6 +118,7 @@ func runScan(args []string) error {
 		NoHooks:         a.NoHooks,
 		NoCommitPatches: a.NoCommitPatches,
 		NoAgentTrace:    a.NoAgentTrace,
+		Snapshot:        a.Snapshot,
 		Post:            a.Post,
 		IncludePrompts:  a.IncludePrompts,
 		LLM:             provider,

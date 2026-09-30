@@ -71,6 +71,7 @@ byte-identical files):
 | `.paircli/pr-482/signals.json` | The full structured report — the machine-readable contract. |
 | `.paircli/pr-482/authorship.json` | Per-file, per-line authorship attribution. |
 | `.paircli/pr-482/agent-trace.json` | The same attribution as a vendor-neutral [Agent Trace](https://agent-trace.dev/) record (skip with `--no-agent-trace`). |
+| `.paircli/pr-482/snapshot.json` | The full replay record: PR, linked sessions, attribution, commit links and the resolved config. A snapshot rebuilds the deterministic report exactly, so the LLM pass can be run later or elsewhere. Written with `--snapshot`. |
 | `.paircli/pr-482/sessions/<harness>-<id>.json` | One normalized session record per linked session. |
 
 Short excerpts from the golden end-to-end scenario (synthetic data):
@@ -183,7 +184,7 @@ fields are appended to the defaults; non-zero scalar fields replace them.
 The `scan` flags `--window-before`, `--window-after`, `--llm` and `--model`
 override the matching config values for one run. Run `paircli --help` for the
 full flag list (including `--no-hooks`, `--no-commit-patches`,
-`--no-agent-trace`, `--out`, `--json`).
+`--no-agent-trace`, `--snapshot`, `--out`, `--json`).
 
 ## Development
 

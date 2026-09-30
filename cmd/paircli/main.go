@@ -64,6 +64,7 @@ scan flags:
   --no-hooks              ignore hook-log records
   --no-commit-patches     skip per-commit patches
   --no-agent-trace        skip agent-trace.json
+  --snapshot              also write snapshot.json, a full replay record
   --window-before DUR     session search window before the first commit (default 48h)
   --window-after DUR      session search window after the last commit (default 2h)
   --json                  print signals.json to stdout

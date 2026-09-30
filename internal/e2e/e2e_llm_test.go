@@ -297,6 +297,63 @@ func TestE2E_WithLLM_Failure(t *testing.T) {
 	}
 }
 
+// TestE2E_WithLLM_PartialFailure covers the case a total failure hides: some
+// jobs answer and one does not. A signal fed only by the failed job must report
+// unknown, not clear — "we could not check" is not "we checked and found
+// nothing" — while the signals whose jobs answered keep their real results.
+func TestE2E_WithLLM_PartialFailure(t *testing.T) {
+	w := newWorld(t)
+	w.build()
+	t.Setenv("PAIRCLI_EVENTS_DIR", w.hookDir)
+
+	// Two unusable replies make the claims job fail after its single retry.
+	// The story and scope jobs then take the two canned replies after it, and
+	// the caveats job finds the provider exhausted.
+	all := e2eLLMReplies(t)
+	fake := &llm.Fake{Replies: []string{"I cannot help with that.", "Still not JSON.", all[1], all[2]}}
+
+	res, err := scan.Run(context.Background(), scan.Options{
+		Repo:    e2eRepo,
+		Number:  e2eNumber,
+		CWD:     w.repoDir,
+		OutDir:  w.outDir,
+		Runner:  w.runner,
+		Config:  w.cfg,
+		LLM:     fake,
+		Now:     e2eAt(e2eNowHHMM),
+		Version: e2eVersion,
+	})
+	if err != nil {
+		t.Fatalf("e2e: a partial LLM failure must not fail the scan: %v", err)
+	}
+
+	// CON-1 is fed only by the claims job, which failed. Before the drop
+	// accounting landed it reported clear, "No checkable claims found."
+	con1 := e2eSignal(t, res.Report, "CON-1")
+	e2eRequireState(t, con1, model.StateUnknown)
+	if len(con1.Findings) != 0 {
+		t.Errorf("CON-1 has %d findings, want none from a failed job", len(con1.Findings))
+	}
+
+	// The jobs that did answer keep their real results.
+	con3 := e2eSignal(t, res.Report, "CON-3")
+	e2eRequireState(t, con3, model.StateAlert)
+	dec3 := e2eSignal(t, res.Report, "DEC-3")
+	e2eRequireState(t, dec3, model.StateInfo)
+
+	// The caveats job also failed, but it feeds only deterministic signals:
+	// their measurements must survive untouched.
+	if con2 := e2eSignal(t, res.Report, "CON-2"); con2.State == model.StateUnknown {
+		t.Errorf("CON-2 = unknown, but no inferred signal is fed by the caveats job")
+	}
+
+	// The failure is still recorded where the report footer reads it.
+	auth2 := e2eSignal(t, res.Report, "AUTH-2")
+	if _, ok := auth2.Data["llm_errors"]; !ok {
+		t.Errorf("AUTH-2: Data[llm_errors] missing: %v", auth2.Data)
+	}
+}
+
 // e2eLLMReplies reads the canned judge replies in job order.
 func e2eLLMReplies(t *testing.T) []string {
 	t.Helper()

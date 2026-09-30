@@ -621,3 +621,193 @@ func TestValidator_EventRefs(t *testing.T) {
 		t.Errorf("eventRefs = %+v, %v", refs, ok)
 	}
 }
+
+// TestHunkLinesOK pins the range check: a range must lie inside a real hunk of
+// the PR diff, not merely look like one.
+func TestHunkLinesOK(t *testing.T) {
+	f := newFixture()
+	v := &validator{ec: f.ec}
+
+	// The fixture's only file adds two lines at line 10, so its hunk spans 10-11.
+	cases := []struct {
+		name  string
+		file  string
+		lines string
+		want  bool
+	}{
+		{"exact hunk range", "internal/api/client.go", "10-11", true},
+		{"single line inside hunk", "internal/api/client.go", "10", true},
+		{"last line of hunk", "internal/api/client.go", "11", true},
+		{"range starts before hunk", "internal/api/client.go", "9-10", false},
+		{"range extends past hunk", "internal/api/client.go", "10-12", false},
+		{"well-formed range matching no hunk", "internal/api/client.go", "99-100", false},
+		{"unknown file", "internal/api/ghost.go", "10-11", false},
+		{"backwards range", "internal/api/client.go", "11-10", false},
+		{"empty file and lines is not checked", "", "", true},
+		{"empty lines is not checked", "internal/api/client.go", "", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := v.hunkLinesOK(tc.file, tc.lines); got != tc.want {
+				t.Errorf("hunkLinesOK(%q, %q) = %v, want %v", tc.file, tc.lines, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestApplyScope_DropsFakeRange checks the check is wired into the scope job and
+// that the item counters record what was offered versus what survived.
+func TestApplyScope_DropsFakeRange(t *testing.T) {
+	f := newFixture()
+	_, ids, _ := f.bundle(t)
+	stats := newStats()
+	v := &validator{ids: ids, ec: f.ec, stats: stats}
+
+	reply := &scopeReply{Scope: []scopeItemReply{
+		{File: "internal/api/client.go", Lines: "10-11", Traced: true, Cites: []string{f.hunkID}},
+		{File: "internal/api/client.go", Lines: "10", Traced: true, Cites: []string{f.hunkID}},
+		{File: "internal/api/client.go", Lines: "99-100", Traced: true, Cites: []string{f.hunkID}},
+	}}
+	j := &model.Judgments{}
+	applyScope(j, reply, v)
+
+	if len(j.Scope) != 2 {
+		t.Fatalf("kept %d scope items, want 2 (exact range, sub-range): %+v", len(j.Scope), j.Scope)
+	}
+	if got, want := stats.Items[kindScope], [2]int{3, 2}; got != want {
+		t.Errorf("scope stats = %v, want %v", got, want)
+	}
+}
+
+// TestApplyScope_EmptyFileDriftKept checks a drift item with no file and no
+// lines is still accepted: a missing plan step legitimately has neither.
+func TestApplyScope_EmptyFileDriftKept(t *testing.T) {
+	f := newFixture()
+	_, ids, _ := f.bundle(t)
+	stats := newStats()
+	v := &validator{ids: ids, ec: f.ec, stats: stats}
+
+	reply := &scopeReply{PlanDrift: []driftReply{
+		{Kind: "missing_step", Text: "add backoff", Cites: []string{f.planID}},
+	}}
+	j := &model.Judgments{}
+	applyScope(j, reply, v)
+
+	if len(j.PlanDrift) != 1 {
+		t.Fatalf("kept %d drift items, want 1: %+v", len(j.PlanDrift), j.PlanDrift)
+	}
+}
+
+// TestStatsUnresolved pins which signals an unusable judgment input marks
+// unknown: only the three inferred ones, and only when the input was genuinely
+// unusable rather than legitimately empty.
+func TestStatsUnresolved(t *testing.T) {
+	cases := []struct {
+		name     string
+		stats    *Stats
+		want     []string // signal IDs, in inferredSources order
+		attempts []int
+	}{
+		{
+			name:  "nothing wrong",
+			stats: newStats(),
+		},
+		{
+			name: "claims job failed marks CON-1",
+			stats: &Stats{
+				Jobs:  map[string]bool{"claims": true, "story": true, "scope": true, "caveats": true},
+				Items: map[string][2]int{},
+			},
+			want: []string{"CON-1", "CON-3", "DEC-3"},
+		},
+		{
+			name: "all scope items dropped marks CON-3",
+			stats: &Stats{
+				Jobs:  map[string]bool{},
+				Items: map[string][2]int{kindScope: {3, 0}},
+			},
+			want:     []string{"CON-3"},
+			attempts: []int{3},
+		},
+		{
+			name: "a legitimately empty reply stays clear",
+			stats: &Stats{
+				Jobs: map[string]bool{},
+				Items: map[string][2]int{
+					kindClaims:    {0, 0},
+					kindScope:     {0, 0},
+					kindDecisions: {0, 0},
+				},
+			},
+		},
+		{
+			name: "a partly usable reply stays clear",
+			stats: &Stats{
+				Jobs:  map[string]bool{},
+				Items: map[string][2]int{kindScope: {4, 1}},
+			},
+		},
+		{
+			name: "a failed job that feeds no inferred signal marks nothing",
+			stats: &Stats{
+				Jobs:  map[string]bool{"caveats": true},
+				Items: map[string][2]int{},
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := tc.stats.Unresolved()
+			if len(got) != len(tc.want) {
+				t.Fatalf("unresolved = %+v, want %v", got, tc.want)
+			}
+			for i, u := range got {
+				if u.Signal != tc.want[i] {
+					t.Errorf("unresolved[%d].Signal = %q, want %q", i, u.Signal, tc.want[i])
+				}
+				if u.Reason == "" {
+					t.Errorf("unresolved[%d] has no reason", i)
+				}
+				if len(tc.attempts) > i && u.Attempted != tc.attempts[i] {
+					t.Errorf("unresolved[%d].Attempted = %d, want %d", i, u.Attempted, tc.attempts[i])
+				}
+			}
+		})
+	}
+}
+
+// TestRunFull_DroppedScopeIsUnresolved checks the wiring: a scope reply whose
+// only item names a range no hunk covers leaves CON-3 unresolved, while the
+// empty claims and story replies leave CON-1 and DEC-3 alone.
+func TestRunFull_DroppedScopeIsUnresolved(t *testing.T) {
+	f := newFixture()
+	cfg := config.Default()
+
+	claims := `{"claims":[]}`
+	story := `{}`
+	scope := `{"scope":[{"file":"internal/api/client.go","lines":"99-100","traced":true,"trace_to":"x","cites":["` + f.hunkID + `"]}]}`
+	caveats := `{}`
+	fake := &llm.Fake{Replies: []string{claims, story, scope, caveats}}
+
+	j, stats, err := RunFull(context.Background(), fake, f.ec, f.sigs, cfg)
+	if err != nil {
+		t.Fatalf("RunFull: %v", err)
+	}
+	if j == nil {
+		t.Fatal("no judgments")
+	}
+	if len(j.Scope) != 0 {
+		t.Fatalf("scope = %+v, want the fake range dropped", j.Scope)
+	}
+
+	got := stats.Unresolved()
+	if len(got) != 1 || got[0].Signal != "CON-3" {
+		t.Fatalf("unresolved = %+v, want only CON-3", got)
+	}
+	if got[0].Attempted != 1 {
+		t.Errorf("Attempted = %d, want 1", got[0].Attempted)
+	}
+	if stats.Failed() != 0 {
+		t.Errorf("Failed() = %d, want 0: every job answered", stats.Failed())
+	}
+}

@@ -136,4 +136,23 @@ func TestDoctor_LLMLine(t *testing.T) {
 	if got := doctorLLM(&cfg); !strings.Contains(got, "claude binary not found") {
 		t.Errorf("claude-cli line = %q", got)
 	}
+
+	cfg.LLM.Provider = "http"
+	cfg.LLM.BaseURL = "https://gateway.internal"
+	cfg.LLM.AuthTokenEnv = "PAIRCLI_TEST_HTTP_TOKEN"
+	t.Setenv("PAIRCLI_TEST_HTTP_TOKEN", "")
+	if got := doctorLLM(&cfg); !strings.Contains(got, "https://gateway.internal") ||
+		!strings.Contains(got, "PAIRCLI_TEST_HTTP_TOKEN not set") {
+		t.Errorf("http line = %q", got)
+	}
+
+	t.Setenv("PAIRCLI_TEST_HTTP_TOKEN", "tok-secret")
+	got = doctorLLM(&cfg)
+	if !strings.Contains(got, "PAIRCLI_TEST_HTTP_TOKEN set") {
+		t.Errorf("http line with token = %q", got)
+	}
+	// The credential itself must never be printed.
+	if strings.Contains(got, "tok-secret") {
+		t.Errorf("http line leaks the token: %q", got)
+	}
 }

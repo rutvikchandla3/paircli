@@ -45,6 +45,11 @@ paircli scan https://github.com/owner/repo/pull/482
 # Also post or update the summary comment on the PR.
 paircli scan 482 --post
 
+# Keep a replay record, then judge it later — or on another machine — without
+# re-reading the PR or the local session transcripts.
+paircli scan 482 --snapshot
+paircli judge .paircli/pr-482/snapshot.json --llm claude-cli
+
 # Check what paircli can see on this machine: sessions per harness,
 # hook install state, gh auth, config, LLM provider.
 paircli doctor
@@ -71,7 +76,7 @@ byte-identical files):
 | `.paircli/pr-482/signals.json` | The full structured report — the machine-readable contract. |
 | `.paircli/pr-482/authorship.json` | Per-file, per-line authorship attribution. |
 | `.paircli/pr-482/agent-trace.json` | The same attribution as a vendor-neutral [Agent Trace](https://agent-trace.dev/) record (skip with `--no-agent-trace`). |
-| `.paircli/pr-482/snapshot.json` | The full replay record: PR, linked sessions, attribution, commit links and the resolved config. A snapshot rebuilds the deterministic report exactly, so the LLM pass can be run later or elsewhere. Written with `--snapshot`. |
+| `.paircli/pr-482/snapshot.json` | The full replay record: PR, linked sessions, attribution, commit links and the resolved config. A snapshot rebuilds the deterministic report exactly, so the LLM pass can be run later or elsewhere — `paircli judge` reads it and writes the judged report back into the folder. Written with `--snapshot`. |
 | `.paircli/pr-482/sessions/<harness>-<id>.json` | One normalized session record per linked session. |
 
 Short excerpts from the golden end-to-end scenario (synthetic data):
@@ -130,7 +135,8 @@ per-harness support live in [`docs/SIGNALS.md`](docs/SIGNALS.md).
 
 Every signal renders as `alert` (look at this), `info` (context), `clear`
 (checked, nothing found) or `unknown` (no data). DEC-3, CON-1 and CON-3 are
-the LLM-judged signals: without `--llm` they show as "Not available".
+the LLM-judged signals: without `--llm` they show as "Not available". Pass
+`--llm` to the scan, or judge its snapshot afterwards with `paircli judge`.
 
 ## Privacy
 
@@ -148,8 +154,12 @@ the LLM-judged signals: without `--llm` they show as "Not available".
   `~/.pi/agent/extensions/paircli.ts`.
 - With `--post`, the rendered `comment.md` is posted to the PR via `gh`.
 - With `--llm`, the grounded judge sends a fact bundle — prompts, diffs and
-  summaries — to the provider you configured (`anthropic` or `claude-cli`).
-  It is off unless you opt in.
+  summaries — to the provider you configured. It is off unless you opt in:
+  `anthropic` goes to Anthropic, `claude-cli` and `pi` go wherever those tools
+  are pointed, and `http` goes to the `llm.base_url` gateway you named.
+  `paircli judge` sends the same bundle for the snapshot you hand it, and reads
+  nothing else, so a replay elsewhere sends exactly what a scan with `--llm`
+  would have.
 
 **Redaction is not implemented yet.** The seam exists (`internal/redact.Text`)
 but is a no-op, so stored and posted text can contain secrets that appeared
@@ -175,16 +185,44 @@ fields are appended to the defaults; non-zero scalar fields replace them.
 | `roots.codex` | path | `~/.codex` |
 | `roots.pi` | path | `~/.pi/agent/sessions` |
 | `roots.hook_log` | path | `~/.paircli/events` |
-| `llm.provider` | `none` / `anthropic` / `claude-cli` | `none` |
+| `llm.provider` | `none` / `anthropic` / `claude-cli` / `pi` / `http` | `none` |
 | `llm.model` | model name | `claude-opus-5-5` |
 | `llm.max_input_chars` | int | `200000` |
+| `llm.base_url` | URL the `http` provider posts to | none (provider off) |
+| `llm.headers` | extra request headers for `http` | none |
+| `llm.auth_token_env` | env var holding the `http` credential | none |
 | `comment.include_prompts` | bool | `false` |
 | `comment.max_lines` | int | `5` |
 
+### LLM providers
+
+The grounded pass is off unless `llm.provider` (or `--llm`) names one.
+
+| Provider | Talks to | Configured by |
+|---|---|---|
+| `anthropic` | the Anthropic Messages API | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` |
+| `claude-cli` | your local `claude` binary, non-interactive | `PAIRCLI_CLAUDE_BIN` or `$PATH` |
+| `pi` | your local `pi` binary, non-interactive | `PAIRCLI_PI_BIN` or `$PATH` |
+| `http` | any gateway speaking the Anthropic Messages shape | `llm.base_url`, `llm.headers`, `llm.auth_token_env` |
+
+`pi` runs with `--no-session --no-tools`, so a judge run never lands in
+`~/.pi/agent/sessions` — the store paircli reads as session data — and never
+touches the repository. It passes `--model` only when one is configured, since
+the shared default names a Claude model pi need not serve.
+
+`http` posts `{llm.base_url}/v1/messages` and sends the credential named by
+`llm.auth_token_env` as `Authorization: Bearer <token>`. Naming the variable
+rather than storing the token keeps it out of `.paircli.json`, and out of the
+`snapshot.json` that mirrors the config. `llm.headers` is applied last, so a
+gateway that wants its token in another header can be told to. Run
+`paircli doctor` to check the endpoint and whether that variable is set.
+
 The `scan` flags `--window-before`, `--window-after`, `--llm` and `--model`
-override the matching config values for one run. Run `paircli --help` for the
-full flag list (including `--no-hooks`, `--no-commit-patches`,
-`--no-agent-trace`, `--snapshot`, `--out`, `--json`).
+override the matching config values for one run. `paircli judge` takes its
+config from the snapshot it replays; its `--llm` and `--model` flags override
+it for that run only. Run `paircli --help` for the full flag list (including
+`--no-hooks`, `--no-commit-patches`, `--no-agent-trace`, `--snapshot`,
+`--out`, `--json` and `judge --force`).
 
 ## Development
 

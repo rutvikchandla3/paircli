@@ -8,6 +8,7 @@ package judge
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/rutvikchandla3/paircli/internal/config"
 	"github.com/rutvikchandla3/paircli/internal/engine"
@@ -49,7 +50,11 @@ func RunFull(ctx context.Context, p llm.Provider, ec *engine.Context, signals []
 	stats := set.Apply(results)
 
 	if stats.Failed() == len(set.Prompts) {
-		return nil, nil, fmt.Errorf("judge: all %d jobs failed", len(set.Prompts))
+		// Carry the per-job reasons: this error is what a caller records on the
+		// report, and "4 jobs failed" on its own does not say why (a provider
+		// that is not authenticated, say, or an unreachable gateway).
+		return nil, nil, fmt.Errorf("judge: all %d jobs failed: %s",
+			len(set.Prompts), strings.Join(set.Judgments().Errors, "; "))
 	}
 	return set.Judgments(), stats, nil
 }

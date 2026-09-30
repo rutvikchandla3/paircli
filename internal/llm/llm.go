@@ -35,6 +35,13 @@ type Provider interface {
 // New builds the Provider configured by cfg. A Provider of "" or "none"
 // disables the grounded LLM pass: New returns (nil, nil) and callers must
 // treat a nil Provider as "skip the LLM pass".
+//
+// "anthropic" and "http" both speak the Anthropic Messages shape; they differ
+// in where their configuration comes from (the ANTHROPIC_* environment versus
+// llm.base_url / llm.headers / llm.auth_token_env). "claude-cli" and "pi"
+// shell out to the harnesses' own non-interactive modes. Every provider
+// reports the configuration it is missing as an error here, rather than
+// failing one job at a time later.
 func New(cfg config.LLM) (Provider, error) {
 	switch cfg.Provider {
 	case "", "none":
@@ -54,6 +61,24 @@ func New(cfg config.LLM) (Provider, error) {
 			bin = found
 		}
 		return newClaudeCLI(bin, cfg), nil
+	case "pi":
+		bin := os.Getenv("PAIRCLI_PI_BIN")
+		if bin == "" {
+			found, err := exec.LookPath("pi")
+			if err != nil {
+				return nil, fmt.Errorf("llm: pi binary not found: %w", err)
+			}
+			bin = found
+		}
+		return newPi(bin, cfg), nil
+	case "http":
+		if cfg.BaseURL == "" {
+			return nil, fmt.Errorf("llm: http: llm.base_url is not set")
+		}
+		if cfg.AuthTokenEnv != "" && os.Getenv(cfg.AuthTokenEnv) == "" {
+			return nil, fmt.Errorf("llm: http: llm.auth_token_env names %s, which is not set", cfg.AuthTokenEnv)
+		}
+		return newHTTP(cfg), nil
 	default:
 		return nil, fmt.Errorf("llm: unknown provider %q", cfg.Provider)
 	}

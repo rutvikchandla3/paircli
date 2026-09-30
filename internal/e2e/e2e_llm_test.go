@@ -87,6 +87,11 @@ func TestE2E_WithLLM(t *testing.T) {
 func e2eAssertLLMRun(t *testing.T, res *scan.Result) {
 	rep := res.Report
 
+	// A clean pass reports nothing to a caller that never reads AUTH-2.
+	if len(res.LLMErrors) != 0 {
+		t.Errorf("LLMErrors = %v, want none when every job answered", res.LLMErrors)
+	}
+
 	// No judge job failed, and no signal carries a leftover error.
 	for _, id := range []string{"DEC-1", "DEC-2", "INT-1", "INT-3", "CON-2", "FRI-3"} {
 		sig := e2eFindSignal(rep, id)
@@ -270,6 +275,11 @@ func TestE2E_WithLLM_Failure(t *testing.T) {
 	errs, ok := auth2.Data["llm_errors"].([]string)
 	if !ok || len(errs) == 0 {
 		t.Errorf("AUTH-2: Data[llm_errors] = %v, want the judge's failure", auth2.Data["llm_errors"])
+	}
+	// The same failure is reported outside the report, so a caller does not have
+	// to read AUTH-2's Data to notice that nothing was judged.
+	if len(res.LLMErrors) == 0 {
+		t.Error("LLMErrors is empty after a failed LLM pass")
 	}
 	for _, sig := range res.Report.Signals {
 		if sig.ID == "AUTH-2" {

@@ -2,6 +2,10 @@
 // PR, discover and link agent sessions, attribute PR lines, run the detectors,
 // write the output folder and optionally upsert the PR comment. The CLI
 // (cmd/paircli) and the end-to-end tests both call Run.
+//
+// Replay is the same pipeline from the other end: it re-runs the detectors and
+// the LLM pass over a snapshot instead of over the PR and the local session
+// stores, and writes the same output folder.
 package scan
 
 import (
@@ -19,7 +23,6 @@ import (
 	"github.com/rutvikchandla3/paircli/internal/attrib"
 	"github.com/rutvikchandla3/paircli/internal/config"
 	"github.com/rutvikchandla3/paircli/internal/engine"
-	"github.com/rutvikchandla3/paircli/internal/enrich"
 	"github.com/rutvikchandla3/paircli/internal/gitinfo"
 	"github.com/rutvikchandla3/paircli/internal/judge"
 	"github.com/rutvikchandla3/paircli/internal/link"
@@ -58,6 +61,13 @@ type Result struct {
 	Report *model.Report
 	OutDir string
 	Alerts int // signals whose State is alert
+
+	// LLMErrors says what the grounded judge could not do: one entry per job
+	// that produced nothing usable, and empty when the pass was clean or did
+	// not run. A failed pass leaves the deterministic report in place and is
+	// not an error, so this is how a caller tells a judged run from one that
+	// only asked to be judged. See PassErrors.
+	LLMErrors []string
 }
 
 // Run runs the whole pipeline for one PR. See docs/plan/README.md
@@ -150,27 +160,14 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	// T26: LLM pass. Without a provider the three inferred signals (DEC-3,
 	// CON-1, CON-3) stay unknown, and the report lists them under "Not
 	// available" with the hint to run with --llm. With one, the judge turns the
-	// deterministic signals and the session facts into model.Judgments, the
-	// inferred signals are recomputed from it, and the judgments are folded
-	// back into the other signals.
+	// deterministic signals and the session facts into model.Judgments and
+	// Merge folds them into the signals; the replay path (Replay) merges the
+	// same way, from the same function.
+	var llmErrors []string
 	if o.LLM != nil {
 		j, stats, err := judge.RunFull(ctx, o.LLM, ec, sigs, cfg)
-		if err != nil {
-			// Keep the deterministic output and note the failure on AUTH-2.
-			sigs = noteLLMError(sigs, []string{err.Error()})
-			j, stats = nil, nil
-		} else if j != nil && len(j.Errors) > 0 {
-			// Some jobs failed while others answered. The signals those jobs
-			// feed are marked unknown below; record the errors here too, so the
-			// report footer says the pass was incomplete rather than clean.
-			sigs = noteLLMError(sigs, j.Errors)
-		}
-		ec.Judgments = j
-		if j != nil {
-			sigs = replaceByID(sigs, engine.RunIDs(ec, inferredIDs...))
-			sigs = markUnresolved(sigs, stats)
-			sigs = enrich.Apply(ec, sigs)
-		}
+		sigs = Merge(ec, sigs, j, stats, err)
+		llmErrors = PassErrors(j, err)
 	}
 
 	// 10. Report and files.
@@ -209,74 +206,7 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 		}
 	}
 
-	return &Result{Report: rep, OutDir: outDir, Alerts: alertCount(sigs)}, nil
-}
-
-// inferredIDs are the three signals only the LLM pass produces (T26).
-var inferredIDs = []string{"DEC-3", "CON-1", "CON-3"}
-
-// replaceByID returns sigs with every signal in repl swapped in for the signal
-// of the same id, in place; a signal sigs does not carry is appended.
-func replaceByID(sigs []model.Signal, repl []model.Signal) []model.Signal {
-	for _, r := range repl {
-		done := false
-		for i := range sigs {
-			if sigs[i].ID == r.ID {
-				sigs[i] = r
-				done = true
-				break
-			}
-		}
-		if !done {
-			sigs = append(sigs, r)
-		}
-	}
-	return sigs
-}
-
-// noteLLMError records a failed LLM pass on AUTH-2's Data, the signal the
-// report footer is built from, and returns sigs unchanged otherwise.
-func noteLLMError(sigs []model.Signal, msgs []string) []model.Signal {
-	if len(msgs) == 0 {
-		return sigs
-	}
-	for i := range sigs {
-		if sigs[i].ID != "AUTH-2" {
-			continue
-		}
-		data := make(map[string]any, len(sigs[i].Data)+1)
-		for k, v := range sigs[i].Data {
-			data[k] = v
-		}
-		data["llm_errors"] = msgs
-		sigs[i].Data = data
-		break
-	}
-	return sigs
-}
-
-// markUnresolved replaces each inferred signal whose judgment input was
-// unusable with an unknown signal. Without it, a job that failed or whose items
-// were all dropped by validation leaves the signal reporting clear — which
-// reads as "checked, nothing found" when the truth is "nothing was checked".
-//
-// Only the inferred signals are touched. Every other signal carries a
-// deterministic measurement that an unusable judgment result must not
-// overwrite, and marking those unknown would throw away real evidence.
-func markUnresolved(sigs []model.Signal, stats *judge.Stats) []model.Signal {
-	for _, u := range stats.Unresolved() {
-		for i := range sigs {
-			if sigs[i].ID != u.Signal {
-				continue
-			}
-			sigs[i] = engine.Unknown(u.Signal, u.Reason)
-			if u.Attempted > 0 {
-				sigs[i].Data = map[string]any{"llm_dropped": u.Attempted}
-			}
-			break
-		}
-	}
-	return sigs
+	return &Result{Report: rep, OutDir: outDir, Alerts: alertCount(sigs), LLMErrors: llmErrors}, nil
 }
 
 // RepoRoot returns the git repository root containing cwd, but only when that

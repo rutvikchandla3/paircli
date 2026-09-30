@@ -47,9 +47,26 @@ type Roots struct {
 
 // LLM configures the optional grounded LLM pass.
 type LLM struct {
-	Provider      string `json:"provider"`        // "none" (default) | "anthropic" | "claude-cli"
+	Provider      string `json:"provider"`        // "none" (default) | "anthropic" | "claude-cli" | "pi" | "http"
 	Model         string `json:"model"`           // default DefaultModel
 	MaxInputChars int    `json:"max_input_chars"` // fact-bundle budget; default 200000
+
+	// BaseURL is where the "http" provider posts; it appends /v1/messages and
+	// speaks the Anthropic Messages shape. Empty means the provider is not
+	// configured. The "anthropic" provider reads ANTHROPIC_BASE_URL instead.
+	BaseURL string `json:"base_url"`
+
+	// Headers are extra request headers for the "http" provider, applied last.
+	// Values are literal, so no secret belongs here: the credential is read
+	// from the environment variable AuthTokenEnv names.
+	Headers map[string]string `json:"headers"`
+
+	// AuthTokenEnv names the environment variable holding the "http"
+	// provider's credential. The value is read per request and sent as
+	// "Authorization: Bearer <token>". Naming the variable instead of storing
+	// the token keeps the secret out of .paircli.json, and out of the
+	// snapshot.json that mirrors it.
+	AuthTokenEnv string `json:"auth_token_env"`
 }
 
 // Comment configures comment.md / --post.
@@ -149,6 +166,16 @@ func Load(repoRoot string) (*Config, error) {
 	}
 	if user.LLM.MaxInputChars != 0 {
 		cfg.LLM.MaxInputChars = user.LLM.MaxInputChars
+	}
+	if user.LLM.BaseURL != "" {
+		cfg.LLM.BaseURL = user.LLM.BaseURL
+	}
+	if len(user.LLM.Headers) > 0 {
+		// A map is a scalar here: Default() sets no headers to append to.
+		cfg.LLM.Headers = user.LLM.Headers
+	}
+	if user.LLM.AuthTokenEnv != "" {
+		cfg.LLM.AuthTokenEnv = user.LLM.AuthTokenEnv
 	}
 	cfg.Comment.IncludePrompts = user.Comment.IncludePrompts
 	if user.Comment.MaxLines != 0 {

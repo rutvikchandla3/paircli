@@ -811,3 +811,26 @@ func TestRunFull_DroppedScopeIsUnresolved(t *testing.T) {
 		t.Errorf("Failed() = %d, want 0: every job answered", stats.Failed())
 	}
 }
+
+// TestRunFull_AllJobsFailedNamesTheReason checks the error a caller records on
+// the report. "4 jobs failed" on its own is not a diagnosis: the reason (an
+// unauthenticated provider, an unreachable gateway) is the only thing that says
+// what to do about it.
+func TestRunFull_AllJobsFailedNamesTheReason(t *testing.T) {
+	f := newFixture()
+	// An exhausted provider fails every job, and every retry with it.
+	fake := &llm.Fake{}
+
+	j, stats, err := RunFull(context.Background(), fake, f.ec, f.sigs, config.Default())
+	if err == nil {
+		t.Fatalf("RunFull: expected an error when every job fails (j=%v, stats=%v)", j, stats)
+	}
+	if !strings.Contains(err.Error(), "no more replies") {
+		t.Errorf("err = %v, want it to carry the provider's own error", err)
+	}
+	for _, name := range []string{"claims", "story", "scope", "caveats"} {
+		if !strings.Contains(err.Error(), name) {
+			t.Errorf("err = %v, want it to name the %s job", err, name)
+		}
+	}
+}

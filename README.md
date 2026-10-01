@@ -33,10 +33,10 @@ go install github.com/rutvikchandla3/paircli/cmd/paircli@latest
 
 ```sh
 # Install hooks so future sessions are linked to commits by exact SHA
-# instead of being reconstructed from transcripts alone.
-paircli hook install claude-code
-paircli hook install codex
-paircli hook install pi
+# instead of being reconstructed from transcripts alone. With no harness
+# named, this covers every harness found on this machine; name one
+# (claude-code | codex | pi) to install just that one.
+paircli hook install
 
 # Scan a PR by number or URL and write the report into .paircli/pr-482/.
 paircli scan 482

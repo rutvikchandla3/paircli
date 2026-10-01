@@ -53,8 +53,9 @@ Usage:
                                             signal pipeline, write the output folder
   paircli judge <snapshot.json> [flags]     run the grounded LLM pass over a scan's
                                             snapshot and rewrite its report files
-  paircli hook install <harness>            install hooks for one harness (claude-code | codex | pi)
-  paircli hook uninstall <harness>          remove that harness's hooks
+  paircli hook install [harness]            install hooks; with no harness, every one
+                                            detected on this machine (claude-code | codex | pi)
+  paircli hook uninstall [harness]          remove hooks; with no harness, all installed ones
   paircli hook <harness> <event>            internal: invoked BY the installed hook
   paircli doctor                            report capture state per harness, gh, config and llm
   paircli version                           print the version

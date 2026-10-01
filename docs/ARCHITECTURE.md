@@ -96,11 +96,14 @@ pins but cannot reproduce.
 ## Three capture paths
 
 **Path A — hooks installed (Claude Code, Codex).** `paircli hook install
-<harness>` registers hook commands in the harness's own config
+[harness]` registers hook commands in the harness's own config
 (`~/.claude/settings.json` for Claude Code, `$CODEX_HOME/hooks.json` for
-Codex). During a session the harness invokes `paircli hook <harness>
-<Event>`, which appends a `model.HookRecord` to
-`~/.paircli/events/<harness>/<date>.jsonl`: git HEAD snapshots (at session
+Codex). Naming no harness installs for every harness detected on the machine
+— detected meaning the directory paircli would write into exists, so it never
+creates config for a tool that is not installed. Naming one installs it
+regardless, since the user asked for it by name. During a session the harness
+invokes `paircli hook <harness> <Event>`, which appends a `model.HookRecord`
+to `~/.paircli/events/<harness>/<date>.jsonl`: git HEAD snapshots (at session
 start/end, prompts, and after state-changing git commands), working-tree
 line-hash snapshots, permission decisions, rule/instruction files. Handlers
 exit 0 and print nothing — hooks never break the agent; failures go to the

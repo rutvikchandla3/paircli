@@ -25,6 +25,10 @@ func main() {
 		err = runJudge(os.Args[2:])
 	case "hook":
 		err = runHook(os.Args[2:])
+	case "login":
+		err = runLogin(os.Args[2:])
+	case "logout":
+		err = runLogout(os.Args[2:])
 	case "doctor":
 		err = runDoctor(os.Args[2:])
 	case "version":
@@ -57,6 +61,8 @@ Usage:
                                             detected on this machine (claude-code | codex | pi)
   paircli hook uninstall [harness]          remove hooks; with no harness, all installed ones
   paircli hook <harness> <event>            internal: invoked BY the installed hook
+  paircli login [flags]                     log in to the pair backend with a device code
+  paircli logout [flags]                    remove the stored credential
   paircli doctor                            report capture state per harness, gh, config and llm
   paircli version                           print the version
 
@@ -81,6 +87,15 @@ judge flags:
   --no-agent-trace        skip agent-trace.json
   --force                 replay even if another paircli version wrote the snapshot
   --json                  print signals.json to stdout
+
+login flags:
+  --server URL            backend base URL (default $PAIRCLI_SERVER_URL or the built-in one)
+  --no-browser            do not open the browser automatically
+  --timeout DUR           overall time to wait for authorization (default 15m)
+  --json                  print the device code payload to stdout
+
+logout flags:
+  --json                  print the result as JSON
 
 See docs/SIGNALS.md and docs/ARCHITECTURE.md for the full design.
 `)

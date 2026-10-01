@@ -12,6 +12,7 @@ import (
 	"github.com/rutvikchandla3/paircli/internal/claudecode"
 	"github.com/rutvikchandla3/paircli/internal/codex"
 	"github.com/rutvikchandla3/paircli/internal/config"
+	"github.com/rutvikchandla3/paircli/internal/deviceauth"
 	"github.com/rutvikchandla3/paircli/internal/engine"
 	"github.com/rutvikchandla3/paircli/internal/hooklog"
 	"github.com/rutvikchandla3/paircli/internal/model"
@@ -69,6 +70,7 @@ func doctorReport(w io.Writer, now time.Time) error {
 	fmt.Fprintf(w, "\n%-8s %s\n", "gh", doctorGh())
 	fmt.Fprintf(w, "%-8s %s\n", "config", doctorConfigPath(root))
 	fmt.Fprintf(w, "%-8s %s\n", "llm", doctorLLM(cfg))
+	fmt.Fprintf(w, "%-8s %s\n", "pair", doctorPair())
 	return nil
 }
 
@@ -183,6 +185,29 @@ func doctorConfigPath(root string) string {
 		return "defaults"
 	}
 	return engine.Home(path)
+}
+
+// doctorPair reports the pair-backend login state. It never prints the
+// credential itself: the environment variable by name, or the file's user and
+// expiry. The path comes from deviceauth.DefaultFile so PAIRCLI_AUTH_FILE keeps
+// tests off the real HOME.
+func doctorPair() string {
+	if os.Getenv(deviceauth.EnvToken) != "" {
+		return deviceauth.EnvToken + " set"
+	}
+	a, err := deviceauth.Load(deviceauth.DefaultFile())
+	if err != nil {
+		return "not logged in"
+	}
+	user := a.User
+	if user == "" {
+		user = "unknown user"
+	}
+	expiry := "no expiry"
+	if !a.ExpiresAt.IsZero() {
+		expiry = "expires " + a.ExpiresAt.UTC().Format("2006-01-02")
+	}
+	return fmt.Sprintf("auth.json (%s, %s)", user, expiry)
 }
 
 // doctorLLM reports the configured provider, its model, and whether the

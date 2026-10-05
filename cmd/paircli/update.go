@@ -17,6 +17,7 @@ func runUpdate(args []string) error {
 	quiet := flags.Bool("quiet", false, "suppress output when already current")
 	jsonOutput := flags.Bool("json", false, "print the update result as JSON")
 	manifestURL := flags.String("manifest-url", os.Getenv("PAIRCLI_UPDATE_MANIFEST_URL"), "release manifest URL")
+	pluginVersion := flags.String("plugin-version", "", "Pair plugin version (used by the plugin integration)")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
@@ -27,6 +28,7 @@ func runUpdate(args []string) error {
 	result, err := selfupdate.Run(context.Background(), selfupdate.Options{
 		CurrentVersion: version,
 		ManifestURL:    *manifestURL,
+		PluginVersion:  *pluginVersion,
 		CheckOnly:      *checkOnly,
 		AllowInsecure:  os.Getenv("PAIRCLI_ALLOW_INSECURE_DOWNLOAD") == "1",
 	})
@@ -35,6 +37,10 @@ func runUpdate(args []string) error {
 	}
 	if *jsonOutput {
 		return json.NewEncoder(os.Stdout).Encode(result)
+	}
+	if result.SkippedReason != "" {
+		fmt.Printf("Skipping update: %s.\n", result.SkippedReason)
+		return nil
 	}
 	if result.Updated {
 		fmt.Printf("Updated paircli from %s to %s.\n", result.CurrentVersion, result.LatestVersion)

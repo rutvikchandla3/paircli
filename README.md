@@ -27,6 +27,29 @@ Once tagged:
 go install github.com/rutvikchandla3/paircli/cmd/paircli@latest
 ```
 
+### Plugin distribution and updates
+
+The Pair plugin does not clone this repository or require Go on a user's
+machine. It downloads the platform binary named in the public release manifest
+at `https://downloads.pair.sh/paircli/latest.json`, verifies its SHA-256, and
+then runs `paircli update` on later PRs. The CLI repeats the manifest and
+checksum verification before replacing itself.
+
+Build the three CDN artifacts and manifest for a release with:
+
+```sh
+bash scripts/build-release-artifacts.sh 0.2.0
+```
+
+This writes `dist/paircli/latest.json` and binaries in
+`dist/paircli/latest/`. Upload those paths to the CDN origin so they resolve as
+`/paircli/latest.json` and `/paircli/latest/paircli-<platform>`. Set
+`PAIRCLI_PUBLIC_BASE_URL` when producing artifacts for a staging CDN. Local
+testing can point both the plugin bootstrap
+(`PAIRCLI_RELEASE_MANIFEST_URL`) and CLI updater
+(`PAIRCLI_UPDATE_MANIFEST_URL`) at a local manifest; set
+`PAIRCLI_ALLOW_INSECURE_DOWNLOAD=1` only for `localhost` HTTP.
+
 ## Quick start
 
 `paircli` needs [`gh`](https://cli.github.com/) to fetch the PR. Then:

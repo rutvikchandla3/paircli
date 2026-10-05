@@ -1,6 +1,7 @@
 # Go build output
 /paircli
 /bin/
+/dist/
 *.exe
 *.test
 *.out

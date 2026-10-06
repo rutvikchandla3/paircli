@@ -20,7 +20,7 @@ import (
 
 // Options configures Write and CommentMarkdown.
 type Options struct {
-	OutDir          string // .paircli/pr-<n>
+	OutDir          string // .paircli/pr-<n>/<head-commit>
 	IncludePrompts  bool
 	MaxCommentLines int
 }

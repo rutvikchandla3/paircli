@@ -42,7 +42,7 @@ type Options struct {
 	Repo            string         // "owner/repo"
 	Number          int            // PR number
 	CWD             string         // where scan was invoked
-	OutDir          string         // default <repo root or CWD>/.paircli/pr-<n>
+	OutDir          string         // default <repo root or CWD>/.paircli/pr-<n>/<head-commit>
 	Runner          pr.Runner      // gh runner; pr.GH{} in the CLI
 	Config          *config.Config // nil → config.Load(repo root)
 	NoHooks         bool           // skip hook-log records
@@ -101,7 +101,7 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 		if base == "" {
 			base = o.CWD
 		}
-		outDir = filepath.Join(base, ".paircli", fmt.Sprintf("pr-%d", o.Number))
+		outDir = filepath.Join(base, ".paircli", fmt.Sprintf("pr-%d", o.Number), artifactCommitDir(p))
 	}
 	// Create it now rather than leaving it to render.Write: the snapshot is
 	// written into outDir earlier in the pipeline, and on a first scan the
@@ -198,7 +198,6 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 			return nil, err
 		}
 	}
-
 	// 12. Optionally upsert the PR comment.
 	if o.Post {
 		if err := postComment(o.Runner, o.Repo, o.Number, filepath.Join(outDir, "comment.md")); err != nil {
@@ -207,6 +206,22 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	}
 
 	return &Result{Report: rep, OutDir: outDir, Alerts: alertCount(sigs), LLMErrors: llmErrors}, nil
+}
+
+func artifactCommitDir(pr *model.PR) string {
+	if pr == nil || len(pr.Commits) == 0 {
+		return "no-commit"
+	}
+	sha := strings.ToLower(strings.TrimSpace(pr.Commits[len(pr.Commits)-1].SHA))
+	if sha == "" {
+		return "no-commit"
+	}
+	for _, character := range sha {
+		if !strings.ContainsRune("0123456789abcdef", character) {
+			return "unknown-commit"
+		}
+	}
+	return sha
 }
 
 // RepoRoot returns the git repository root containing cwd, but only when that

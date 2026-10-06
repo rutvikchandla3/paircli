@@ -92,7 +92,7 @@ for that pinned GitHub Release redirect.
 # (claude-code | codex | pi) to install just that one.
 paircli hook install
 
-# Scan a PR by number or URL and write the report into .paircli/pr-482/.
+# Scan a PR by number or URL and write artifacts into .paircli/pr-482/<head-commit>/.
 paircli scan 482
 paircli scan https://github.com/owner/repo/pull/482
 
@@ -102,7 +102,7 @@ paircli scan 482 --post
 # Keep a replay record, then judge it later — or on another machine — without
 # re-reading the PR or the local session transcripts.
 paircli scan 482 --snapshot
-paircli judge .paircli/pr-482/snapshot.json --llm claude-cli
+paircli judge .paircli/pr-482/<head-commit>/snapshot.json --llm claude-cli
 
 # Check what paircli can see on this machine: sessions per harness,
 # hook install state, gh auth, config, LLM provider.
@@ -125,13 +125,16 @@ byte-identical files):
 
 | File | What it is |
 |---|---|
-| `.paircli/pr-482/report.md` | The human-readable report — read this first. Coverage and alerts on top, then one section per review question. |
-| `.paircli/pr-482/comment.md` | The PR comment body: a one-line coverage summary plus the top alerts. `--post` upserts it (the comment carrying the `<!-- paircli -->` marker is updated in place). |
-| `.paircli/pr-482/signals.json` | The full structured report — the machine-readable contract. |
-| `.paircli/pr-482/authorship.json` | Per-file, per-line authorship attribution. |
-| `.paircli/pr-482/agent-trace.json` | The same attribution as a vendor-neutral [Agent Trace](https://agent-trace.dev/) record (skip with `--no-agent-trace`). |
-| `.paircli/pr-482/snapshot.json` | The full replay record: PR, linked sessions, attribution, commit links and the resolved config. A snapshot rebuilds the deterministic report exactly, so the LLM pass can be run later or elsewhere — `paircli judge` reads it and writes the judged report back into the folder. Written with `--snapshot`. |
-| `.paircli/pr-482/sessions/<harness>-<id>.json` | One normalized session record per linked session. |
+| `.paircli/pr-482/<head-commit>/report.md` | The human-readable report — read this first. Coverage and alerts on top, then one section per review question. |
+| `.paircli/pr-482/<head-commit>/comment.md` | The PR comment body: a one-line coverage summary plus the top alerts. `--post` upserts it (the comment carrying the `<!-- paircli -->` marker is updated in place). |
+| `.paircli/pr-482/<head-commit>/signals.json` | The full structured report — the machine-readable contract. |
+| `.paircli/pr-482/<head-commit>/authorship.json` | Per-file, per-line authorship attribution. |
+| `.paircli/pr-482/<head-commit>/agent-trace.json` | The same attribution as a vendor-neutral [Agent Trace](https://agent-trace.dev/) record (skip with `--no-agent-trace`). |
+| `.paircli/pr-482/<head-commit>/snapshot.json` | The full replay record: PR, linked sessions, attribution, commit links and the resolved config. A snapshot rebuilds the deterministic report exactly, so the LLM pass can be run later or elsewhere — `paircli judge` reads it and writes the judged report back into the folder. Written with `--snapshot`. |
+| `.paircli/pr-482/<head-commit>/sessions/<harness>-<id>.json` | One normalized session record per linked session. |
+
+The Pair plugin uses these files and the linked sessions to ask the user's
+Codex or Claude agent to write an AI-authored `summary.md` in the same folder.
 
 Short excerpts from the golden end-to-end scenario (synthetic data):
 
@@ -201,7 +204,7 @@ the LLM-judged signals: without `--llm` they show as "Not available". Pass
 
 **What is written where.**
 
-- `.paircli/pr-<n>/` inside the repo — the report files (gitignored).
+- `.paircli/pr-<n>/<head-commit>/` inside the repo — the scan artifacts (gitignored).
 - `~/.paircli/events/<harness>/<date>.jsonl` — hook event records.
 - Hook install edits the harness's own config: `~/.claude/settings.json`,
   `$CODEX_HOME/hooks.json` (never `config.toml`), and

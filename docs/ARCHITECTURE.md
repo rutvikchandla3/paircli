@@ -52,9 +52,10 @@ go through this one entry point.
    than `clear`: "we could not check" is not "we checked and found
    nothing". Failures are noted on AUTH-2's `Data["llm_errors"]`, whether
    the pass failed entirely or only in part.
-9. **Render** — `render.BuildReport` and `render.Write` produce the output
-   folder `.paircli/pr-<n>/`: `report.md`, `comment.md`, `signals.json`,
-   `authorship.json` and `sessions/<harness>-<id>.json`. Output is
+9. **Render** — `render.BuildReport` and `render.Write` produce
+   `.paircli/pr-<n>/<head-commit>/`: `report.md`, `comment.md`,
+   `signals.json`, `authorship.json` and
+   `sessions/<harness>-<id>.json`. Output is
    deterministic: identical input produces byte-identical files.
 10. **Agent Trace** — `agenttrace.WriteWith` exports the same attribution as
     a vendor-neutral Agent Trace record (`agent-trace.json`; skip with
@@ -62,6 +63,9 @@ go through this one entry point.
 11. **Post** — with `--post`, `scan` upserts one PR comment via `gh`: the
     comment whose body starts with `<!-- paircli -->` is updated in place,
     otherwise a new comment is posted.
+
+The Pair plugin may write an AI-authored `summary.md` from these artifacts
+after the CLI scan completes. The CLI itself does not generate that file.
 
 ## Replaying a scan: `paircli judge`
 
@@ -208,7 +212,7 @@ generated files, excluded from coverage ratios).
 ## Output folder
 
 ```
-.paircli/pr-<number>/
+.paircli/pr-<number>/<head-commit>/
   report.md                 # human-readable report — read this first
   comment.md                # PR comment body (--post upserts it)
   signals.json              # full structured report, the machine contract

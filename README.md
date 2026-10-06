@@ -27,6 +27,60 @@ Once tagged:
 go install github.com/rutvikchandla3/paircli/cmd/paircli@latest
 ```
 
+### Plugin distribution and updates
+
+The Pair plugin does not clone this repository or require Go on a user's
+machine. It downloads the platform binary named in the public release manifest
+at `https://github.com/rutvikchandla3/paircli/releases/latest/download/latest.json`,
+verifies its SHA-256, and then runs `paircli update` on later PRs. The CLI
+repeats the manifest and checksum verification before replacing itself.
+
+Build the four GitHub Release artifacts and manifest for a release with:
+
+```sh
+bash scripts/build-release-artifacts.sh 0.2.0
+```
+
+This writes the immutable binary set and `SHA256SUMS` to
+`dist/paircli/0.2.0/`, plus the mutable pointer
+`dist/paircli/latest.json`. The release workflow uploads them to the GitHub
+Release for tag `v0.2.0`: its binaries resolve from
+`/rutvikchandla3/paircli/releases/download/v0.2.0/paircli-<platform>`, while
+GitHub's latest-release URL resolves `latest.json`. This preserves rollback
+and pinned-release options while updating only the small `latest.json`
+pointer. Set `PAIRCLI_RELEASE_BASE_URL` when producing artifacts for an
+approved staging endpoint. Local testing can point both the plugin bootstrap
+(`PAIRCLI_RELEASE_MANIFEST_URL`) and CLI updater
+(`PAIRCLI_UPDATE_MANIFEST_URL`) at a local manifest; set
+`PAIRCLI_ALLOW_INSECURE_DOWNLOAD=1` only for `localhost` HTTP.
+
+The manifest is schema-versioned and contains `minimum_version`,
+`min_plugin_version`, and `revoked`. The plugin refuses a release that requires
+a newer plugin, rather than failing later with an incompatible CLI interface.
+The CLI refuses a revoked latest release and skips updates from locally-built
+development versions. The plugin owns only the first bootstrap download. Once
+a binary is present, `paircli update` owns all later manifest checks and
+replacements; Homebrew installations remain managed by `brew upgrade paircli`.
+
+Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`: it tests the
+module, builds the same immutable artifact set, creates SHA-256 checksums,
+attests the build, and publishes a GitHub Release containing the manifest and
+all versioned binaries.
+
+For enterprise mirrors or pinned releases, set both
+`PAIRCLI_RELEASE_MANIFEST_URL` (plugin bootstrap) and
+`PAIRCLI_UPDATE_MANIFEST_URL` (CLI updates) to the approved HTTPS manifest URL.
+An offline install can place an approved executable at the plugin's
+`paircli/bin/paircli` path before approval; the plugin then skips bootstrap and
+the CLI remains responsible for future updates.
+
+The production manifest endpoint must return `Content-Type: application/json`.
+`paircli update` has a 30-second network timeout and allows only GitHub's
+expected HTTPS redirects from `github.com` to its release-asset hosts; it
+rejects other cross-origin redirects as release configuration errors. GitHub
+serves release assets as `application/octet-stream`, which Pair accepts only
+for that pinned GitHub Release redirect.
+
 ## Quick start
 
 `paircli` needs [`gh`](https://cli.github.com/) to fetch the PR. Then:
@@ -38,7 +92,7 @@ go install github.com/rutvikchandla3/paircli/cmd/paircli@latest
 # (claude-code | codex | pi) to install just that one.
 paircli hook install
 
-# Scan a PR by number or URL and write the report into .paircli/pr-482/.
+# Scan a PR by number or URL and write artifacts into .paircli/pr-482/<head-commit>/.
 paircli scan 482
 paircli scan https://github.com/owner/repo/pull/482
 
@@ -48,7 +102,7 @@ paircli scan 482 --post
 # Keep a replay record, then judge it later — or on another machine — without
 # re-reading the PR or the local session transcripts.
 paircli scan 482 --snapshot
-paircli judge .paircli/pr-482/snapshot.json --llm claude-cli
+paircli judge .paircli/pr-482/<head-commit>/snapshot.json --llm claude-cli
 
 # Check what paircli can see on this machine: sessions per harness,
 # hook install state, gh auth, config, LLM provider.
@@ -71,13 +125,16 @@ byte-identical files):
 
 | File | What it is |
 |---|---|
-| `.paircli/pr-482/report.md` | The human-readable report — read this first. Coverage and alerts on top, then one section per review question. |
-| `.paircli/pr-482/comment.md` | The PR comment body: a one-line coverage summary plus the top alerts. `--post` upserts it (the comment carrying the `<!-- paircli -->` marker is updated in place). |
-| `.paircli/pr-482/signals.json` | The full structured report — the machine-readable contract. |
-| `.paircli/pr-482/authorship.json` | Per-file, per-line authorship attribution. |
-| `.paircli/pr-482/agent-trace.json` | The same attribution as a vendor-neutral [Agent Trace](https://agent-trace.dev/) record (skip with `--no-agent-trace`). |
-| `.paircli/pr-482/snapshot.json` | The full replay record: PR, linked sessions, attribution, commit links and the resolved config. A snapshot rebuilds the deterministic report exactly, so the LLM pass can be run later or elsewhere — `paircli judge` reads it and writes the judged report back into the folder. Written with `--snapshot`. |
-| `.paircli/pr-482/sessions/<harness>-<id>.json` | One normalized session record per linked session. |
+| `.paircli/pr-482/<head-commit>/report.md` | The human-readable report — read this first. Coverage and alerts on top, then one section per review question. |
+| `.paircli/pr-482/<head-commit>/comment.md` | The PR comment body: a one-line coverage summary plus the top alerts. `--post` upserts it (the comment carrying the `<!-- paircli -->` marker is updated in place). |
+| `.paircli/pr-482/<head-commit>/signals.json` | The full structured report — the machine-readable contract. |
+| `.paircli/pr-482/<head-commit>/authorship.json` | Per-file, per-line authorship attribution. |
+| `.paircli/pr-482/<head-commit>/agent-trace.json` | The same attribution as a vendor-neutral [Agent Trace](https://agent-trace.dev/) record (skip with `--no-agent-trace`). |
+| `.paircli/pr-482/<head-commit>/snapshot.json` | The full replay record: PR, linked sessions, attribution, commit links and the resolved config. A snapshot rebuilds the deterministic report exactly, so the LLM pass can be run later or elsewhere — `paircli judge` reads it and writes the judged report back into the folder. Written with `--snapshot`. |
+| `.paircli/pr-482/<head-commit>/sessions/<harness>-<id>.json` | One normalized session record per linked session. |
+
+The Pair plugin uses these files and the linked sessions to ask the user's
+Codex or Claude agent to write an AI-authored `summary.md` in the same folder.
 
 Short excerpts from the golden end-to-end scenario (synthetic data):
 
@@ -147,7 +204,7 @@ the LLM-judged signals: without `--llm` they show as "Not available". Pass
 
 **What is written where.**
 
-- `.paircli/pr-<n>/` inside the repo — the report files (gitignored).
+- `.paircli/pr-<n>/<head-commit>/` inside the repo — the scan artifacts (gitignored).
 - `~/.paircli/events/<harness>/<date>.jsonl` — hook event records.
 - Hook install edits the harness's own config: `~/.claude/settings.json`,
   `$CODEX_HOME/hooks.json` (never `config.toml`), and

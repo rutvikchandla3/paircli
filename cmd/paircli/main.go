@@ -31,6 +31,8 @@ func main() {
 		err = runLogout(os.Args[2:])
 	case "doctor":
 		err = runDoctor(os.Args[2:])
+	case "update":
+		err = runUpdate(os.Args[2:])
 	case "version":
 		fmt.Printf("paircli %s\n", version)
 		return
@@ -64,10 +66,11 @@ Usage:
   paircli login [flags]                     log in to the pair backend with a device code
   paircli logout [flags]                    remove the stored credential
   paircli doctor                            report capture state per harness, gh, config and llm
+  paircli update [flags]                    download and install the latest verified CLI release
   paircli version                           print the version
 
 scan flags:
-  --out DIR               output folder (default <repo>/.paircli/pr-<n>)
+  --out DIR               output folder (default <repo>/.paircli/pr-<n>/<head-commit>)
   --post                  create or update the PR comment
   --include-prompts       let comment.md carry prompt text
   --llm PROVIDER          none | anthropic | claude-cli | pi | http (default: config)
@@ -96,6 +99,12 @@ login flags:
 
 logout flags:
   --json                  print the result as JSON
+
+update flags:
+  --check                 check for an update without installing it
+  --quiet                 suppress output when already current
+  --json                  print the update result as JSON
+  --manifest-url URL      release manifest URL (default $PAIRCLI_UPDATE_MANIFEST_URL or GitHub Releases)
 
 See docs/SIGNALS.md and docs/ARCHITECTURE.md for the full design.
 `)

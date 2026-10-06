@@ -1,4 +1,4 @@
-// Package selfupdate downloads verified paircli releases from the public CDN.
+// Package selfupdate downloads verified paircli releases from GitHub Releases.
 package selfupdate
 
 import (
@@ -19,21 +19,29 @@ import (
 )
 
 const (
-	// DefaultManifestURL is the public CDN entrypoint updated by the release job.
-	DefaultManifestURL = "https://downloads.pair.sh/paircli/latest.json"
-	maxManifestSize    = 1 * 1024 * 1024
-	maxBinarySize      = 100 * 1024 * 1024
-	requestTimeout     = 30 * time.Second
-	manifestSchema     = "paircli-release/v1"
+	// DefaultManifestURL is the latest GitHub Release manifest published by the release job.
+	DefaultManifestURL      = "https://github.com/rutvikchandla3/paircli/releases/latest/download/latest.json"
+	githubReleaseHost       = "github.com"
+	githubReleasePathPrefix = "/rutvikchandla3/paircli/releases/"
+	maxManifestSize         = 1 * 1024 * 1024
+	maxBinarySize           = 100 * 1024 * 1024
+	requestTimeout          = 30 * time.Second
+	manifestSchema          = "paircli-release/v1"
 )
 
-// Artifact describes one platform-specific executable in the CDN manifest.
+var githubReleaseAssetHosts = map[string]struct{}{
+	"github-releases.githubusercontent.com": {},
+	"objects.githubusercontent.com":         {},
+	"release-assets.githubusercontent.com":  {},
+}
+
+// Artifact describes one platform-specific executable in the release manifest.
 type Artifact struct {
 	URL    string `json:"url"`
 	SHA256 string `json:"sha256"`
 }
 
-// Manifest describes the latest paircli release available from the CDN.
+// Manifest describes the latest paircli release available from GitHub Releases.
 type Manifest struct {
 	Schema           string              `json:"schema"`
 	Version          string              `json:"version"`
@@ -62,7 +70,7 @@ type Result struct {
 	SkippedReason  string
 }
 
-// Run checks the CDN manifest and atomically replaces the executable when newer.
+// Run checks the release manifest and atomically replaces the executable when newer.
 func Run(ctx context.Context, options Options) (Result, error) {
 	manifestURL := options.ManifestURL
 	if manifestURL == "" {
@@ -134,13 +142,35 @@ func releaseHTTPClient() *http.Client {
 			if len(previous) == 0 {
 				return nil
 			}
-			origin := previous[0].URL
-			if request.URL.Scheme != origin.Scheme || request.URL.Host != origin.Host {
+			if !isAllowedReleaseRedirect(previous[0].URL, request.URL) {
 				return fmt.Errorf("release download redirected to a different origin")
 			}
 			return nil
 		},
 	}
+}
+
+func isAllowedReleaseRedirect(origin, target *url.URL) bool {
+	if origin.Scheme == target.Scheme && origin.Host == target.Host {
+		return true
+	}
+	return isGitHubReleaseAssetRedirect(origin, target)
+}
+
+func isGitHubReleaseAssetRedirect(origin, target *url.URL) bool {
+	if origin.Scheme != "https" ||
+		target.Scheme != "https" ||
+		!strings.EqualFold(origin.Hostname(), githubReleaseHost) ||
+		!strings.HasPrefix(origin.Path, githubReleasePathPrefix) {
+		return false
+	}
+	_, allowed := githubReleaseAssetHosts[strings.ToLower(target.Hostname())]
+	return allowed
+}
+
+func isAcceptedManifestContentType(origin, target *url.URL, contentType string) bool {
+	return contentType == "application/json" ||
+		(contentType == "application/octet-stream" && isGitHubReleaseAssetRedirect(origin, target))
 }
 
 func fetchManifest(ctx context.Context, client *http.Client, manifestURL string) (Manifest, error) {
@@ -157,7 +187,8 @@ func fetchManifest(ctx context.Context, client *http.Client, manifestURL string)
 		return Manifest{}, fmt.Errorf("fetch update manifest: unexpected HTTP %d", response.StatusCode)
 	}
 	contentType := strings.Split(response.Header.Get("Content-Type"), ";")[0]
-	if contentType != "application/json" {
+	requestedURL, parseErr := url.Parse(manifestURL)
+	if parseErr != nil || !isAcceptedManifestContentType(requestedURL, response.Request.URL, contentType) {
 		return Manifest{}, fmt.Errorf("fetch update manifest: expected application/json, got %s", contentType)
 	}
 	var manifest Manifest

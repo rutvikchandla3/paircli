@@ -14,7 +14,7 @@ fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUTPUT_ROOT="${PAIRCLI_RELEASE_OUTPUT_DIR:-$ROOT/dist/paircli}"
-PUBLIC_BASE_URL="${PAIRCLI_PUBLIC_BASE_URL:-https://downloads.pair.sh/paircli}"
+RELEASE_BASE_URL="${PAIRCLI_RELEASE_BASE_URL:-https://github.com/rutvikchandla3/paircli/releases/download/v$VERSION}"
 MIN_PLUGIN_VERSION="${PAIRCLI_MIN_PLUGIN_VERSION:-0.1.0}"
 MINIMUM_VERSION="${PAIRCLI_MINIMUM_VERSION:-$VERSION}"
 RELEASE_DIR="$OUTPUT_ROOT/$VERSION"
@@ -57,19 +57,19 @@ cat >"$OUTPUT_ROOT/latest.json" <<EOF
   "revoked": [],
   "artifacts": {
     "darwin-arm64": {
-      "url": "$PUBLIC_BASE_URL/$VERSION/paircli-darwin-arm64",
+      "url": "$RELEASE_BASE_URL/paircli-darwin-arm64",
       "sha256": "$DARWIN_ARM64_SHA"
     },
     "darwin-amd64": {
-      "url": "$PUBLIC_BASE_URL/$VERSION/paircli-darwin-amd64",
+      "url": "$RELEASE_BASE_URL/paircli-darwin-amd64",
       "sha256": "$DARWIN_AMD64_SHA"
     },
     "linux-amd64": {
-      "url": "$PUBLIC_BASE_URL/$VERSION/paircli-linux-amd64",
+      "url": "$RELEASE_BASE_URL/paircli-linux-amd64",
       "sha256": "$LINUX_AMD64_SHA"
     },
     "linux-arm64": {
-      "url": "$PUBLIC_BASE_URL/$VERSION/paircli-linux-arm64",
+      "url": "$RELEASE_BASE_URL/paircli-linux-arm64",
       "sha256": "$LINUX_ARM64_SHA"
     }
   }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -207,6 +208,81 @@ func TestRunRejectsHomebrewManagedBinary(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "Homebrew") {
 		t.Fatalf("Run() error = %v, want Homebrew failure", err)
+	}
+}
+
+func TestIsAllowedReleaseRedirect(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name   string
+		origin string
+		target string
+		want   bool
+	}{
+		{
+			name:   "same origin",
+			origin: "https://github.com/rutvikchandla3/paircli/releases/latest/download/latest.json",
+			target: "https://github.com/rutvikchandla3/paircli/releases/download/v0.1.0/latest.json",
+			want:   true,
+		},
+		{
+			name:   "github release asset",
+			origin: "https://github.com/rutvikchandla3/paircli/releases/latest/download/latest.json",
+			target: "https://release-assets.githubusercontent.com/github-production-release-asset/example",
+			want:   true,
+		},
+		{
+			name:   "unexpected host",
+			origin: "https://github.com/rutvikchandla3/paircli/releases/latest/download/latest.json",
+			target: "https://downloads.example.test/paircli/latest.json",
+			want:   false,
+		},
+		{
+			name:   "custom manifest cannot redirect",
+			origin: "https://mirror.example.test/paircli/latest.json",
+			target: "https://release-assets.githubusercontent.com/github-production-release-asset/example",
+			want:   false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			origin, err := url.Parse(test.origin)
+			if err != nil {
+				t.Fatal(err)
+			}
+			target, err := url.Parse(test.target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := isAllowedReleaseRedirect(origin, target); got != test.want {
+				t.Fatalf("isAllowedReleaseRedirect(%q, %q) = %t, want %t", test.origin, test.target, got, test.want)
+			}
+		})
+	}
+}
+
+func TestIsAcceptedManifestContentType(t *testing.T) {
+	t.Parallel()
+	origin, err := url.Parse("https://github.com/rutvikchandla3/paircli/releases/latest/download/latest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	releaseAsset, err := url.Parse("https://release-assets.githubusercontent.com/github-production-release-asset/example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mirror, err := url.Parse("https://mirror.example.test/latest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isAcceptedManifestContentType(origin, releaseAsset, "application/octet-stream") {
+		t.Fatal("GitHub Release octet-stream manifest was rejected")
+	}
+	if isAcceptedManifestContentType(mirror, mirror, "application/octet-stream") {
+		t.Fatal("custom octet-stream manifest was accepted")
+	}
+	if !isAcceptedManifestContentType(mirror, mirror, "application/json") {
+		t.Fatal("JSON manifest was rejected")
 	}
 }
 

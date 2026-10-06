@@ -104,7 +104,7 @@ update flags:
   --check                 check for an update without installing it
   --quiet                 suppress output when already current
   --json                  print the update result as JSON
-  --manifest-url URL      release manifest URL (default $PAIRCLI_UPDATE_MANIFEST_URL or built-in CDN)
+  --manifest-url URL      release manifest URL (default $PAIRCLI_UPDATE_MANIFEST_URL or GitHub Releases)
 
 See docs/SIGNALS.md and docs/ARCHITECTURE.md for the full design.
 `)

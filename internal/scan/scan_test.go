@@ -249,6 +249,37 @@ func TestRun_Minimal(t *testing.T) {
 	}
 }
 
+func TestRun_DefaultOutDirIncludesHeadCommit(t *testing.T) {
+	repoRoot := t.TempDir()
+	scanGitRepo(t, repoRoot, "git@github.com:acme/shop.git")
+
+	projects := t.TempDir()
+	scanTranscript(t, projects, repoRoot)
+	r := newScanRunner()
+	r.responses[scanPRArg] = []byte(scanGHView)
+	r.responses[scanDiffArg] = []byte(scanDiff)
+
+	res, err := Run(context.Background(), Options{
+		Repo:            "acme/shop",
+		Number:          7,
+		CWD:             repoRoot,
+		Runner:          r,
+		Config:          scanConfig(t, projects),
+		NoHooks:         true,
+		NoCommitPatches: true,
+		Now:             time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
+		Version:         "0.0.0-test",
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	want := filepath.Join(repoRoot, ".paircli", "pr-7", "aaaaaaa1")
+	if res.OutDir != want {
+		t.Fatalf("OutDir = %q, want %q", res.OutDir, want)
+	}
+}
+
 // scanFindSignal returns the signal with id, or nil.
 func scanFindSignal(sigs []model.Signal, id string) *model.Signal {
 	for i := range sigs {

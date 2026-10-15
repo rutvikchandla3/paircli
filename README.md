@@ -1,300 +1,58 @@
 # paircli
 
-paircli turns local AI coding sessions — Claude Code, Codex CLI and Pi — into
-review signals for a pull request: what was asked for, who wrote which lines,
-whether it was verified, where the agent struggled, what it touched outside
-the diff, and how closely a human was watching. It reads only what is already
-on your disk, correlates sessions to the PR's commits, and writes a report a
-reviewer can read in seconds. It does not review the code itself, does not
-produce a verdict, and does not score people — signals describe a change,
-never a person.
+Turns local AI coding sessions (Claude Code, Codex CLI, Pi) into review signals
+for a pull request: what was asked, who wrote which lines, whether it was
+verified, where the agent struggled, and how closely a human was watching.
+
+It reads only what is already on your disk and writes a report a reviewer can
+read in seconds. It does not review code, give a verdict, or score people.
 
 ## Install
-
-Build from source (the repo is not tagged yet, so `go install …@latest` will
-work only once a release is published):
 
 ```sh
 git clone https://github.com/rutvikchandla3/paircli
 cd paircli
 go build ./cmd/paircli
-./paircli --help
 ```
 
-Once tagged:
+Needs [`gh`](https://cli.github.com/) to fetch the PR.
+
+## Use
 
 ```sh
-go install github.com/rutvikchandla3/paircli/cmd/paircli@latest
+paircli hook install      # optional: link sessions to commits by exact SHA
+paircli scan 482          # scan a PR by number or URL
+paircli scan 482 --post   # also post the summary as a PR comment
+paircli doctor            # check what paircli can see on this machine
 ```
 
-### Plugin distribution and updates
-
-The Pair plugin does not clone this repository or require Go on a user's
-machine. It downloads the platform binary named in the public release manifest
-at `https://github.com/rutvikchandla3/paircli/releases/latest/download/latest.json`,
-verifies its SHA-256, and then runs `paircli update` on later PRs. The CLI
-repeats the manifest and checksum verification before replacing itself.
-
-Build the four GitHub Release artifacts and manifest for a release with:
-
-```sh
-bash scripts/build-release-artifacts.sh 0.2.0
-```
-
-This writes the immutable binary set and `SHA256SUMS` to
-`dist/paircli/0.2.0/`, plus the mutable pointer
-`dist/paircli/latest.json`. The release workflow uploads them to the GitHub
-Release for tag `v0.2.0`: its binaries resolve from
-`/rutvikchandla3/paircli/releases/download/v0.2.0/paircli-<platform>`, while
-GitHub's latest-release URL resolves `latest.json`. This preserves rollback
-and pinned-release options while updating only the small `latest.json`
-pointer. Set `PAIRCLI_RELEASE_BASE_URL` when producing artifacts for an
-approved staging endpoint. Local testing can point both the plugin bootstrap
-(`PAIRCLI_RELEASE_MANIFEST_URL`) and CLI updater
-(`PAIRCLI_UPDATE_MANIFEST_URL`) at a local manifest; set
-`PAIRCLI_ALLOW_INSECURE_DOWNLOAD=1` only for `localhost` HTTP.
-
-The manifest is schema-versioned and contains `minimum_version`,
-`min_plugin_version`, and `revoked`. The plugin refuses a release that requires
-a newer plugin, rather than failing later with an incompatible CLI interface.
-The CLI refuses a revoked latest release and skips updates from locally-built
-development versions. The plugin owns only the first bootstrap download. Once
-a binary is present, `paircli update` owns all later manifest checks and
-replacements; Homebrew installations remain managed by `brew upgrade paircli`.
-
-Pushing a `vX.Y.Z` tag runs `.github/workflows/release.yml`: it tests the
-module, builds the same immutable artifact set, creates SHA-256 checksums,
-attests the build, and publishes a GitHub Release containing the manifest and
-all versioned binaries.
-
-For enterprise mirrors or pinned releases, set both
-`PAIRCLI_RELEASE_MANIFEST_URL` (plugin bootstrap) and
-`PAIRCLI_UPDATE_MANIFEST_URL` (CLI updates) to the approved HTTPS manifest URL.
-An offline install can place an approved executable at the plugin's
-`paircli/bin/paircli` path before approval; the plugin then skips bootstrap and
-the CLI remains responsible for future updates.
-
-The production manifest endpoint must return `Content-Type: application/json`.
-`paircli update` has a 30-second network timeout and allows only GitHub's
-expected HTTPS redirects from `github.com` to its release-asset hosts; it
-rejects other cross-origin redirects as release configuration errors. GitHub
-serves release assets as `application/octet-stream`, which Pair accepts only
-for that pinned GitHub Release redirect.
-
-## Quick start
-
-`paircli` needs [`gh`](https://cli.github.com/) to fetch the PR. Then:
-
-```sh
-# Install hooks so future sessions are linked to commits by exact SHA
-# instead of being reconstructed from transcripts alone. With no harness
-# named, this covers every harness found on this machine; name one
-# (claude-code | codex | pi) to install just that one.
-paircli hook install
-
-# Scan a PR by number or URL and write artifacts into .paircli/pr-482/<head-commit>/.
-paircli scan 482
-paircli scan https://github.com/owner/repo/pull/482
-
-# Also post or update the summary comment on the PR.
-paircli scan 482 --post
-
-# Keep a replay record, then judge it later — or on another machine — without
-# re-reading the PR or the local session transcripts.
-paircli scan 482 --snapshot
-paircli judge .paircli/pr-482/<head-commit>/snapshot.json --llm claude-cli
-
-# Check what paircli can see on this machine: sessions per harness,
-# hook install state, gh auth, config, LLM provider.
-paircli doctor
-```
-
-**Codex trust note.** Codex runs no hook until you have reviewed and trusted
-it inside Codex itself. After `paircli hook install codex`, start Codex and
-approve the paircli hooks when prompted, then run `paircli doctor` — it shows
-how many of the installed hooks Codex has marked trusted (`installed, N/M
-trusted`). paircli never edits Codex's trust state (`config.toml`).
-
-Hooks are optional: without them paircli reconstructs sessions from the
-harnesses' own transcript files, with weaker commit linkage.
-
-## What you get
-
-`paircli scan 482` writes (deterministically — identical input produces
-byte-identical files):
-
-| File | What it is |
-|---|---|
-| `.paircli/pr-482/<head-commit>/report.md` | The human-readable report — read this first. Coverage and alerts on top, then one section per review question. |
-| `.paircli/pr-482/<head-commit>/comment.md` | The PR comment body: a one-line coverage summary plus the top alerts. `--post` upserts it (the comment carrying the `<!-- paircli -->` marker is updated in place). |
-| `.paircli/pr-482/<head-commit>/signals.json` | The full structured report — the machine-readable contract. |
-| `.paircli/pr-482/<head-commit>/authorship.json` | Per-file, per-line authorship attribution. |
-| `.paircli/pr-482/<head-commit>/agent-trace.json` | The same attribution as a vendor-neutral [Agent Trace](https://agent-trace.dev/) record (skip with `--no-agent-trace`). |
-| `.paircli/pr-482/<head-commit>/snapshot.json` | The full replay record: PR, linked sessions, attribution, commit links and the resolved config. A snapshot rebuilds the deterministic report exactly, so the LLM pass can be run later or elsewhere — `paircli judge` reads it and writes the judged report back into the folder. Written with `--snapshot`. |
-| `.paircli/pr-482/<head-commit>/sessions/<harness>-<id>.json` | One normalized session record per linked session. |
-
-The Pair plugin uses these files and the linked sessions to ask the user's
-Codex or Claude agent to write an AI-authored `summary.md` in the same folder.
-
-Short excerpts from the golden end-to-end scenario (synthetic data):
-
-`comment.md`:
-
-> **paircli** · 3 sessions (1 claude-code, 1 codex, 1 pi) · 90% of changed lines explained · capture: partial
->
-> - ▲ **Verification freshness:** 8 PR hunks were edited after the last passing test run (14:02 UTC). `VER-2`
-> - ▲ **Test integrity:** Test integrity issues: 3 test edits between fail and pass. `VER-4`
-
-`report.md`:
-
-> **Coverage:** 3 sessions (1 claude-code, 1 codex, 1 pi) · capture: partial · 90% of changed lines explained · 1 unattributed commit
->
-> **VER-2 Verification freshness:** 8 PR hunks were edited after the last passing test run (14:02 UTC).
-> - `src/webhooks/retry.ts` lines 12 changed at 14:07 UTC, after the last passing run.
+Output goes to `.paircli/pr-482/<head-commit>/`. Start with `report.md`;
+`comment.md` is the PR comment and `signals.json` is the full machine-readable
+result.
 
 ## Signals
 
-Thirty signals across eight review questions. Details, provenance rules and
-per-harness support live in [`docs/SIGNALS.md`](docs/SIGNALS.md).
+Thirty signals across eight questions: intent, authorship, verification,
+decisions, friction, exposure, oversight and consistency. See
+[docs/SIGNALS.md](docs/SIGNALS.md).
 
-| ID | Question | Signal |
-|---|---|---|
-| INT-1 | intent | Ask ledger |
-| INT-2 | intent | Human-answered decisions |
-| INT-3 | intent | Approved plan and plan drift |
-| INT-4 | intent | Rules in effect |
-| AUTH-1 | authorship | Line-level authorship |
-| AUTH-2 | authorship | Session-commit map and coverage |
-| AUTH-3 | authorship | Model mix and disclosure trailer |
-| VER-1 | verification | Verification log |
-| VER-2 | verification | Verification freshness |
-| VER-3 | verification | Check-to-change coverage |
-| VER-4 | verification | Test integrity |
-| VER-5 | verification | Quality-gate bypasses |
-| VER-6 | verification | Runtime and visual evidence |
-| DEC-1 | decisions | Human corrections |
-| DEC-2 | decisions | Abandoned approaches |
-| DEC-3 | decisions | Decision trail *(needs `--llm`)* |
-| FRI-1 | friction | Churn hotspots |
-| FRI-2 | friction | Loops and unresolved errors |
-| FRI-3 | friction | Context resets |
-| FRI-4 | friction | Knowledge lookups |
-| EXP-1 | exposure | Side-effect ledger |
-| EXP-2 | exposure | Dependency provenance |
-| EXP-3 | exposure | Untrusted-input chain |
-| EXP-4 | exposure | Secret contact |
-| OVS-1 | oversight | Autonomy envelope |
-| OVS-2 | oversight | Human touchpoints |
-| OVS-3 | oversight | Delegated work |
-| CON-1 | consistency | Claim check *(needs `--llm`)* |
-| CON-2 | consistency | Open loops |
-| CON-3 | consistency | Scope match *(needs `--llm`)* |
-
-Every signal renders as `alert` (look at this), `info` (context), `clear`
-(checked, nothing found) or `unknown` (no data). DEC-3, CON-1 and CON-3 are
-the LLM-judged signals: without `--llm` they show as "Not available". Pass
-`--llm` to the scan, or judge its snapshot afterwards with `paircli judge`.
+Three signals need an LLM pass (`--llm`); everything else is deterministic.
 
 ## Privacy
 
-**What is read.** Local harness transcripts (`~/.claude/projects`,
-`~/.codex`, `~/.pi/agent/sessions` — overridable via `roots` in
-`.paircli.json`), paircli's own hook records, and the PR itself via `gh`
-(metadata, diff, per-commit patches). Nothing else. No telemetry.
+No telemetry. paircli reads local session transcripts and the PR via `gh`.
+Nothing is sent to an LLM unless you opt in with `--llm`. Redaction is not
+implemented yet, so stored text may contain secrets from your sessions.
+Details: [docs/CONFIGURATION.md](docs/CONFIGURATION.md).
 
-**What is written where.**
+## More
 
-- `.paircli/pr-<n>/<head-commit>/` inside the repo — the scan artifacts (gitignored).
-- `~/.paircli/events/<harness>/<date>.jsonl` — hook event records.
-- Hook install edits the harness's own config: `~/.claude/settings.json`,
-  `$CODEX_HOME/hooks.json` (never `config.toml`), and
-  `~/.pi/agent/extensions/paircli.ts`.
-- With `--post`, the rendered `comment.md` is posted to the PR via `gh`.
-- With `--llm`, the grounded judge sends a fact bundle — prompts, diffs and
-  summaries — to the provider you configured. It is off unless you opt in:
-  `anthropic` goes to Anthropic, `claude-cli` and `pi` go wherever those tools
-  are pointed, and `http` goes to the `llm.base_url` gateway you named.
-  `paircli judge` sends the same bundle for the snapshot you hand it, and reads
-  nothing else, so a replay elsewhere sends exactly what a scan with `--llm`
-  would have.
-
-**Redaction is not implemented yet.** The seam exists (`internal/redact.Text`)
-but is a no-op, so stored and posted text can contain secrets that appeared
-in the sessions. EXP-4 reports secret-shaped matches masked, and
-`comment.md` never includes prompt text unless you set `comment.include_prompts`
-(or pass `--include-prompts`) — until real redaction lands, those are the
-compensating defaults.
-
-## Configuration
-
-`.paircli.json` at the repository root; a missing file means defaults. List
-fields are appended to the defaults; non-zero scalar fields replace them.
-
-| Key | Type | Default |
-|---|---|---|
-| `sensitive_paths` | globs | CI configs, Dockerfiles, deploy/infra/terraform, auth/security/migrations dirs, manifest files, `.env*` |
-| `generated_paths` | globs | `*.pb.go`, `*_generated.*`, `*.min.js`, vendor/dist dirs, lockfiles, `*.snap` |
-| `test_path_patterns` | RE2 regexes on repo-relative paths | none |
-| `extra_checks` | `[{"class","regex"}]`, class `test`/`lint`/`typecheck`/`build` | none |
-| `window_before` | Go duration string | `"48h"` before the first PR commit |
-| `window_after` | Go duration string | `"2h"` after the last PR commit |
-| `roots.claude_code` | path | `~/.claude/projects` |
-| `roots.codex` | path | `~/.codex` |
-| `roots.pi` | path | `~/.pi/agent/sessions` |
-| `roots.hook_log` | path | `~/.paircli/events` |
-| `llm.provider` | `none` / `anthropic` / `claude-cli` / `pi` / `http` | `none` |
-| `llm.model` | model name | `claude-opus-5-5` |
-| `llm.max_input_chars` | int | `200000` |
-| `llm.base_url` | URL the `http` provider posts to | none (provider off) |
-| `llm.headers` | extra request headers for `http` | none |
-| `llm.auth_token_env` | env var holding the `http` credential | none |
-| `comment.include_prompts` | bool | `false` |
-| `comment.max_lines` | int | `5` |
-
-### LLM providers
-
-The grounded pass is off unless `llm.provider` (or `--llm`) names one.
-
-| Provider | Talks to | Configured by |
-|---|---|---|
-| `anthropic` | the Anthropic Messages API | `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` |
-| `claude-cli` | your local `claude` binary, non-interactive | `PAIRCLI_CLAUDE_BIN` or `$PATH` |
-| `pi` | your local `pi` binary, non-interactive | `PAIRCLI_PI_BIN` or `$PATH` |
-| `http` | any gateway speaking the Anthropic Messages shape | `llm.base_url`, `llm.headers`, `llm.auth_token_env` |
-
-`pi` runs with `--no-session --no-tools`, so a judge run never lands in
-`~/.pi/agent/sessions` — the store paircli reads as session data — and never
-touches the repository. It passes `--model` only when one is configured, since
-the shared default names a Claude model pi need not serve.
-
-`http` posts `{llm.base_url}/v1/messages` and sends the credential named by
-`llm.auth_token_env` as `Authorization: Bearer <token>`. Naming the variable
-rather than storing the token keeps it out of `.paircli.json`, and out of the
-`snapshot.json` that mirrors the config. `llm.headers` is applied last, so a
-gateway that wants its token in another header can be told to. Run
-`paircli doctor` to check the endpoint and whether that variable is set.
-
-The `scan` flags `--window-before`, `--window-after`, `--llm` and `--model`
-override the matching config values for one run. `paircli judge` takes its
-config from the snapshot it replays; its `--llm` and `--model` flags override
-it for that run only. Run `paircli --help` for the full flag list (including
-`--no-hooks`, `--no-commit-patches`, `--no-agent-trace`, `--snapshot`,
-`--out`, `--json` and `judge --force`).
+- [Configuration](docs/CONFIGURATION.md) (`.paircli.json`, LLM providers)
+- [Releasing and updates](docs/RELEASING.md)
+- [Architecture](docs/ARCHITECTURE.md)
 
 ## Development
 
 ```sh
 go test ./...
 ```
-
-Golden files live in `testdata/golden/`; a package with golden files defines
-an `-update` flag and is updated with:
-
-```sh
-go test ./internal/e2e/... -update   # or whichever package owns the golden files
-```
-
-The design docs — the full v2 build plan, frozen contracts and per-task
-specs — live under [`docs/plan/`](docs/plan/); the signal catalog is
-[`docs/SIGNALS.md`](docs/SIGNALS.md) and the pipeline is described in
-[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

@@ -58,6 +58,15 @@ func findByID(t *testing.T, s *model.Session, id string) *model.Event {
 	return nil
 }
 
+func TestDefaultRootHonorsCodexHome(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(codexHomeEnv, root)
+
+	if got := DefaultRoot(); got != root {
+		t.Fatalf("DefaultRoot() = %q, want %q", got, root)
+	}
+}
+
 func TestDiscover(t *testing.T) {
 	root := "testdata"
 	got, err := Discover(root, time.Time{})

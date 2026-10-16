@@ -3,8 +3,10 @@
 package pr
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -115,13 +117,9 @@ func Fetch(r Runner, repo string, number int, withCommitPatches bool) (*model.PR
 		prv.Commits = append(prv.Commits, model.Commit{SHA: c.OID, Time: ct, Message: msg})
 	}
 
-	diffOut, err := r.Run("pr", "diff", strconv.Itoa(number), "-R", repo)
+	files, err := fetchFiles(r, repo, number)
 	if err != nil {
-		return nil, fmt.Errorf("pr: gh pr diff: %w", err)
-	}
-	files, err := diff.Parse(string(diffOut))
-	if err != nil {
-		return nil, fmt.Errorf("pr: parsing pr diff: %w", err)
+		return nil, err
 	}
 	prv.Files = files
 
@@ -149,6 +147,62 @@ func Fetch(r Runner, repo string, number int, withCommitPatches bool) (*model.PR
 	}
 
 	return prv, nil
+}
+
+// fetchFiles returns the PR's changed files from its combined diff. GitHub
+// refuses to render a combined diff over 20,000 lines (HTTP 406, too_large);
+// for those PRs the files come from the paginated pulls files API instead,
+// one patch per file.
+func fetchFiles(r Runner, repo string, number int) ([]model.DiffFile, error) {
+	diffOut, err := r.Run("pr", "diff", strconv.Itoa(number), "-R", repo)
+	if err != nil {
+		if !isDiffTooLarge(err) {
+			return nil, fmt.Errorf("pr: gh pr diff: %w", err)
+		}
+		files, filesErr := fetchFilesFromAPI(r, repo, number)
+		if filesErr != nil {
+			return nil, fmt.Errorf("pr: gh pr diff: %w; falling back to the files API: %w", err, filesErr)
+		}
+		return files, nil
+	}
+	files, err := diff.Parse(string(diffOut))
+	if err != nil {
+		return nil, fmt.Errorf("pr: parsing pr diff: %w", err)
+	}
+	return files, nil
+}
+
+// isDiffTooLarge reports whether gh failed because GitHub would not render
+// the combined diff.
+func isDiffTooLarge(err error) bool {
+	msg := err.Error()
+	return strings.Contains(msg, "too_large") || strings.Contains(msg, "HTTP 406") ||
+		strings.Contains(msg, "exceeded the maximum number of lines")
+}
+
+// fetchFilesFromAPI lists a PR's files through `gh api --paginate`. GitHub
+// returns at most 3,000 files and omits the patch of a very large file; such
+// a file is kept, without hunks, as commit patches keep a patchless file.
+func fetchFilesFromAPI(r Runner, repo string, number int) ([]model.DiffFile, error) {
+	out, err := r.Run("api", "--paginate", fmt.Sprintf("repos/%s/pulls/%d/files?per_page=100", repo, number))
+	if err != nil {
+		return nil, fmt.Errorf("gh api pull files: %w", err)
+	}
+	// --paginate writes each page's JSON array back to back.
+	dec := json.NewDecoder(bytes.NewReader(out))
+	var files []model.DiffFile
+	for {
+		var page []ghCommitFile
+		if err := dec.Decode(&page); err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, fmt.Errorf("parsing gh api pull files: %w", err)
+		}
+		for _, f := range page {
+			files = append(files, commitFileToDiffFile(f))
+		}
+	}
+	return files, nil
 }
 
 // commitFileToDiffFile converts one gh api commit file entry into a

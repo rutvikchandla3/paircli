@@ -315,7 +315,7 @@ func TestResolveServer(t *testing.T) {
 		t.Errorf("env fallback: %q", got)
 	}
 	t.Setenv(serverURLEnv, "")
-	if got := resolveServer(""); got != defaultServerURL {
+	if got := resolveServer(""); got != "https://pair.sh" {
 		t.Errorf("default: %q", got)
 	}
 }

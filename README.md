@@ -17,6 +17,10 @@ go build ./cmd/paircli
 
 Needs [`gh`](https://cli.github.com/) to fetch the PR.
 
+`paircli login` uses `https://pair.sh` by default. Set
+`PAIRCLI_SERVER_URL` or pass `--server` to log in against a private or local
+Pair backend; credentials are scoped to the server that issued them.
+
 ## Use
 
 ```sh

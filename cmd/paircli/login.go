@@ -17,7 +17,7 @@ import (
 
 // defaultServerURL is the backend the CLI logs into when neither --server nor
 // PAIRCLI_SERVER_URL names one.
-const defaultServerURL = "https://pair.hackerrank.com"
+const defaultServerURL = "https://pair.sh"
 
 // serverURLEnv overrides defaultServerURL, below --server.
 const serverURLEnv = "PAIRCLI_SERVER_URL"

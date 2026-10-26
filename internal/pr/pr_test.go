@@ -214,6 +214,98 @@ func TestFetch_CommitLimit(t *testing.T) {
 	}
 }
 
+func prFilesKey() string {
+	return fmt.Sprintf("api --paginate repos/%s/pulls/42/files?per_page=100", testRepo)
+}
+
+// tooLargeDiffErr is the error GH.Run returns when GitHub will not render a
+// PR's combined diff.
+var tooLargeDiffErr = errors.New("gh pr diff 42 -R acme/shop: exit status 1: could not find pull request diff: " +
+	"HTTP 406: Sorry, the diff exceeded the maximum number of lines (20000) " +
+	"(https://api.github.com/repos/acme/shop/pulls/42)\nPullRequest.diff too_large")
+
+// pagedFiles concatenates the files API pages as `gh api --paginate` prints them.
+func pagedFiles(t *testing.T, paths ...string) []byte {
+	t.Helper()
+	var out []byte
+	for _, p := range paths {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatalf("reading testdata %s: %v", p, err)
+		}
+		out = append(out, data...)
+	}
+	return out
+}
+
+func TestFetch_DiffTooLargeUsesFilesAPI(t *testing.T) {
+	r := newFakeRunner(t).
+		withFile(prViewKey(), "testdata/pr_view.json").
+		withErr(prDiffKey(), tooLargeDiffErr)
+	r.responses[prFilesKey()] = pagedFiles(t, "testdata/pr_files_page1.json", "testdata/pr_files_page2.json")
+
+	got, err := Fetch(r, testRepo, 42, false)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if got.Title != "Add checkout flow" || len(got.Commits) != 2 {
+		t.Errorf("metadata = %q with %d commits", got.Title, len(got.Commits))
+	}
+	if len(got.Files) != 4 {
+		t.Fatalf("len(Files) = %d, want 4 across both pages", len(got.Files))
+	}
+
+	modified, renamed, removed, huge := got.Files[0], got.Files[1], got.Files[2], got.Files[3]
+	if modified.Path != "checkout.go" || modified.Status != model.StatusModified ||
+		len(modified.Hunks) != 1 || len(modified.Hunks[0].Lines) != 3 {
+		t.Errorf("modified = %+v", modified)
+	}
+	if renamed.Path != "cart/new.go" || renamed.OldPath != "cart/old.go" || renamed.Status != model.StatusRenamed ||
+		len(renamed.Hunks) != 1 {
+		t.Errorf("renamed = %+v", renamed)
+	}
+	if removed.Path != "legacy/plan.go" || removed.Status != model.StatusDeleted || len(removed.Hunks) != 1 {
+		t.Errorf("removed = %+v", removed)
+	}
+	// GitHub omits the patch of a very large file; the file is kept without hunks.
+	if huge.Path != "fixtures/huge.json" || !huge.Binary || len(huge.Hunks) != 0 {
+		t.Errorf("patchless file = %+v", huge)
+	}
+}
+
+func TestFetch_DiffTooLargeFilesAPIError(t *testing.T) {
+	r := newFakeRunner(t).
+		withFile(prViewKey(), "testdata/pr_view.json").
+		withErr(prDiffKey(), tooLargeDiffErr).
+		withErr(prFilesKey(), errors.New("exit status 1: HTTP 502"))
+
+	_, err := Fetch(r, testRepo, 42, false)
+	if err == nil {
+		t.Fatal("Fetch: err = nil, want non-nil")
+	}
+	for _, want := range []string{"too_large", "files API", "HTTP 502"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %q, want it to mention %q", err, want)
+		}
+	}
+}
+
+func TestFetch_DiffErrorIsNotRetried(t *testing.T) {
+	r := newFakeRunner(t).
+		withFile(prViewKey(), "testdata/pr_view.json").
+		withErr(prDiffKey(), errors.New("exit status 1: HTTP 404: Not Found"))
+
+	_, err := Fetch(r, testRepo, 42, false)
+	if err == nil || !strings.Contains(err.Error(), "gh pr diff") {
+		t.Fatalf("err = %v, want the gh pr diff error", err)
+	}
+	for _, call := range r.calls {
+		if strings.HasPrefix(call, "api --paginate") {
+			t.Errorf("Fetch called the files API for a diff error that is not too_large: %q", call)
+		}
+	}
+}
+
 func TestFetch_GHError(t *testing.T) {
 	r := newFakeRunner(t).
 		withErr(prViewKey(), errors.New("exit status 1: GraphQL: Could not resolve to a PullRequest with the number of 42. (repository.pullRequest)"))

@@ -1,0 +1,4 @@
+[
+  {"filename": "checkout.go", "status": "modified", "patch": "@@ -1,2 +1,2 @@\n package checkout\n-func Old() {}\n+func New() {}"},
+  {"filename": "cart/new.go", "previous_filename": "cart/old.go", "status": "renamed", "patch": "@@ -3 +3 @@\n-const limit = 5\n+const limit = 10"}
+]

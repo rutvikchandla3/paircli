@@ -1,0 +1,4 @@
+[
+  {"filename": "legacy/plan.go", "status": "removed", "patch": "@@ -1,2 +0,0 @@\n-package legacy\n-func Plan() {}"},
+  {"filename": "fixtures/huge.json", "status": "modified"}
+]

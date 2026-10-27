@@ -203,3 +203,65 @@ func TestTextUsesDefaultRedactor(t *testing.T) {
 		t.Errorf("default counts = %v", Default().Counts())
 	}
 }
+
+// A raw JSONL line spells a newline as the two characters \n, so a secret that
+// starts a line has an "n" (or "t", "r") in front of it, not a word boundary.
+func TestSecretsRightAfterJSONEscapesAreRedacted(t *testing.T) {
+	tests := []struct {
+		name, secret, kind string
+	}{
+		{"aws access key id", awsKeyID, KindAWSAccessKey},
+		{"github token", ghToken, KindGitHubToken},
+		{"openai style key", skKey, KindAPIKey},
+		{"slack token", slackTok, KindSlackToken},
+		{"jwt", jwt, KindJWT},
+	}
+	for _, tt := range tests {
+		for _, esc := range []string{`\n`, `\t`, `\r`} {
+			in := `{"content":"out` + esc + tt.secret + esc + `done"}`
+			want := `{"content":"out` + esc + "[REDACTED:" + tt.kind + "]" + esc + `done"}`
+			if got := New0().Text(in); got != want {
+				t.Errorf("%s after %s: got %q, want %q", tt.name, esc, got, want)
+			}
+		}
+	}
+
+	r := New0()
+	in := `{"content":"ok\nAWS_SECRET_ACCESS_KEY=` + awsSec + `\nAuthorization: Bearer abcdef1234567890\n"}`
+	want := `{"content":"ok\nAWS_SECRET_ACCESS_KEY=[REDACTED:aws_secret]\nAuthorization: Bearer [REDACTED:bearer]\n"}`
+	if got := string(r.Bytes([]byte(in + "\n"))); got != want+"\n" {
+		t.Errorf("assignment after an escape: got %q, want %q", got, want)
+	}
+}
+
+func TestCredentialsInURLsAreRedacted(t *testing.T) {
+	tests := []struct{ name, in, want string }{
+		{"postgres", "DATABASE_URL=postgres://admin:hunter2pass@db.internal:5432/app", "DATABASE_URL=postgres://admin:[REDACTED:url_credentials]@db.internal:5432/app"},
+		{"https remote", "git clone https://bot:s3cretPass9@github.com/o/r.git", "git clone https://bot:[REDACTED:url_credentials]@github.com/o/r.git"},
+		{"after a json escape", `{"c":"x\nredis://:p4ssw0rdvalue@cache:6379"}`, `{"c":"x\nredis://:[REDACTED:url_credentials]@cache:6379"}`},
+	}
+	for _, tt := range tests {
+		r := New0()
+		if got := r.Text(tt.in); got != tt.want {
+			t.Errorf("%s: got %q, want %q", tt.name, got, tt.want)
+		}
+		if r.Counts()[KindURLCredentials] != 1 {
+			t.Errorf("%s: counts = %v", tt.name, r.Counts())
+		}
+	}
+	for _, keep := range []string{
+		"https://github.com/o/r.git",
+		"http://localhost:8080/path",
+		"https://user@example.com/x",
+		"postgres://admin:${DB_PASSWORD}@db/app",
+		"postgres://admin:<password>@db/app",
+		"https://host:8080/a@b",
+	} {
+		if got := New0().Text(keep); got != keep {
+			t.Errorf("%q was changed to %q", keep, got)
+		}
+	}
+}
+
+// New0 is a Redactor with no environment secrets, so only the rules apply.
+func New0() *Redactor { return NewWith(nil, "") }

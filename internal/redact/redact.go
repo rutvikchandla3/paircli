@@ -42,6 +42,7 @@ const (
 	KindSecretAssignment = "secret_assignment"
 	KindEnvSecret        = "env_secret"
 	KindNPMToken         = "npm_token"
+	KindURLCredentials   = "url_credentials"
 )
 
 // minEnvValue is the shortest environment value worth redacting by exact
@@ -51,6 +52,12 @@ const minEnvValue = 12
 // sep is what joins a name to its value, tolerating a JSON-escaped quote
 // after the name and before the value (`\"password\": \"x\"`).
 const sep = `\\?["']?\s*(?::=|=>|[:=])\s*\\?["']?`
+
+// lead is the boundary in front of a token. Besides a word boundary it accepts
+// a JSON-escaped newline, tab or carriage return, because in a raw transcript
+// line a token that starts a line follows the two characters `\n`, which have
+// no word boundary between them and the token.
+const lead = `(?:\\[nrt]|\b)`
 
 // rule is one pattern. The submatch group is replaced (0 = the whole match);
 // keep, when set, decides whether a match is really a secret. hints are
@@ -72,41 +79,56 @@ var rules = []rule{
 	},
 	{
 		kind:  KindGitHubToken,
-		re:    regexp.MustCompile(`\b(?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{22,})`),
+		re:    regexp.MustCompile(lead + `((?:gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{22,}))`),
+		group: 1,
 		hints: []string{"ghp_", "gho_", "ghu_", "ghs_", "ghr_", "github_pat_"},
 	},
 	{
 		kind:  KindAPIKey,
-		re:    regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{20,}`),
+		re:    regexp.MustCompile(lead + `(sk-[A-Za-z0-9_-]{20,})`),
+		group: 1,
 		hints: []string{"sk-"},
 		keep:  func(v, _ string) bool { return hasDigitOrUpper(v) },
 	},
 	{
 		kind:  KindAWSAccessKey,
-		re:    regexp.MustCompile(`\b(?:AKIA|ASIA)[0-9A-Z]{16}\b`),
+		re:    regexp.MustCompile(lead + `((?:AKIA|ASIA)[0-9A-Z]{16})\b`),
+		group: 1,
 		hints: []string{"akia", "asia"},
 	},
 	{
 		kind:  KindAWSSecret,
-		re:    regexp.MustCompile(`(?i)\baws_?secret_?(?:access_?)?key` + sep + `([A-Za-z0-9/+=]{40})`),
+		re:    regexp.MustCompile(`(?i)` + lead + `aws_?secret_?(?:access_?)?key` + sep + `([A-Za-z0-9/+=]{40})`),
 		group: 1,
 		hints: []string{"secret"},
 	},
 	{
 		kind:  KindSlackToken,
-		re:    regexp.MustCompile(`\b(?:xox[abposr]|xapp)-[A-Za-z0-9-]{10,}`),
+		re:    regexp.MustCompile(lead + `((?:xox[abposr]|xapp)-[A-Za-z0-9-]{10,})`),
+		group: 1,
 		hints: []string{"xox", "xapp-"},
 	},
 	{
 		kind:  KindJWT,
-		re:    regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*`),
+		re:    regexp.MustCompile(lead + `(eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*)`),
+		group: 1,
 		hints: []string{"eyj"},
 	},
 	{
 		kind:  KindBearer,
-		re:    regexp.MustCompile(`(?i)\bauthorization` + sep + `\s*(?:bearer|basic)\s+([A-Za-z0-9._~+/=-]{8,})`),
+		re:    regexp.MustCompile(`(?i)` + lead + `authorization` + sep + `\s*(?:bearer|basic)\s+([A-Za-z0-9._~+/=-]{8,})`),
 		group: 1,
 		hints: []string{"authorization"},
+		keep:  func(v, _ string) bool { return !isPlaceholder(v) },
+	},
+	{
+		// scheme://user:password@host: the password of a connection string or
+		// a credentialed remote. Provider tokens in that position are caught
+		// by their own rules first, which leaves a placeholder behind.
+		kind:  KindURLCredentials,
+		re:    regexp.MustCompile(`(?i)\b[a-z][a-z0-9+.-]*://[^\s/:@"'\\]*:([^\s/@"'\\]{3,})@`),
+		group: 1,
+		hints: []string{"://"},
 		keep:  func(v, _ string) bool { return !isPlaceholder(v) },
 	},
 	{

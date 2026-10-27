@@ -1,6 +1,7 @@
 package redact
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -265,3 +266,38 @@ func TestCredentialsInURLsAreRedacted(t *testing.T) {
 
 // New0 is a Redactor with no environment secrets, so only the rules apply.
 func New0() *Redactor { return NewWith(nil, "") }
+
+// A JSON string escapes characters with a backslash, so a secret-looking name
+// followed by one must not let a rule take the backslash for the quote it
+// tolerates: redacting the text after it would leave `\[REDACTED:...]`, which
+// is not a JSON escape, and the whole scan file would stop parsing.
+func TestRedactingJSONNeverBreaksItsEscapes(t *testing.T) {
+	for _, escape := range []string{`\u0026`, `\u003c`, `\t`, `\n`, `\r`, `\\`, `\/`, `\b`, `\f`} {
+		for _, name := range []string{"ExecutionToken:", "api_key=", "password :=", "Authorization: Bearer", "aws_secret_access_key:"} {
+			in := `{"text":"` + name + ` ` + escape + `abcdef1234567890abcdef1234567890abcdef12"}`
+			got := string(NewWith(nil, "").Bytes([]byte(in)))
+			var v map[string]string
+			if err := json.Unmarshal([]byte(got), &v); err != nil {
+				t.Errorf("redacting %q gave invalid JSON %q: %v", in, got, err)
+			}
+		}
+	}
+
+	// A quoted value is still a secret, and the escaped quote stays whole.
+	in := `{"out":"{\"password\": \"hunter2hunter2\"}"}`
+	want := `{"out":"{\"password\": \"[REDACTED:secret_assignment]\"}"}`
+	if got := string(NewWith(nil, "").Bytes([]byte(in))); got != want {
+		t.Errorf("escaped quotes: got %q, want %q", got, want)
+	}
+}
+
+func TestAddressOfSecretNamedVariableIsNotASecret(t *testing.T) {
+	r := NewWith(nil, "")
+	in := `{"text":"models.Job{ExecutionToken: \u0026token, ExecutionLeaseUntil: \u0026live}"}`
+	if got := string(r.Bytes([]byte(in))); got != in {
+		t.Errorf("got %q, want it unchanged", got)
+	}
+	if len(r.Counts()) != 0 {
+		t.Errorf("counted %v", r.Counts())
+	}
+}

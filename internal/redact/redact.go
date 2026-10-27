@@ -50,8 +50,12 @@ const (
 const minEnvValue = 12
 
 // sep is what joins a name to its value, tolerating a JSON-escaped quote
-// after the name and before the value (`\"password\": \"x\"`).
-const sep = `\\?["']?\s*(?::=|=>|[:=])\s*\\?["']?`
+// after the name and before the value (`\"password\": \"x\"`). A backslash
+// belongs to the separator only when the quote it escapes follows it: any
+// other backslash starts a JSON escape (`\u0026`, `\t`) that the value must
+// not be cut out of, or the replacement would leave `\[REDACTED:...]` behind
+// and the file would no longer parse.
+const sep = `(?:\\?["'])?\s*(?::=|=>|[:=])\s*(?:\\?["'])?`
 
 // lead is the boundary in front of a token. Besides a word boundary it accepts
 // a JSON-escaped newline, tab or carriage return, because in a raw transcript

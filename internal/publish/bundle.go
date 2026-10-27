@@ -12,6 +12,7 @@ import (
 	"path"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/rutvikchandla3/paircli/internal/capture"
@@ -144,7 +145,11 @@ func readScanFiles(o BundleOptions) ([]entry, map[string]int, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		out = append(out, entry{name: path.Join(scanRoot, name), data: redactor.Bytes(data)})
+		redacted, err := redactScanFile(name, data, redactor.Bytes)
+		if err != nil {
+			return nil, nil, err
+		}
+		out = append(out, entry{name: path.Join(scanRoot, name), data: redacted})
 	}
 	if o.ChangedFiles {
 		contents, err := readChangedFiles(o, scanRoot, redactor)
@@ -157,6 +162,19 @@ func readScanFiles(o BundleOptions) ([]entry, map[string]int, error) {
 		return nil, nil, fmt.Errorf("scan folder %s has no report files", o.ScanDir)
 	}
 	return out, redactor.Counts(), nil
+}
+
+// redactScanFile redacts one scan file. The AI pipeline parses the .json files,
+// and a file it cannot parse is not an error there: it quietly falls back to a
+// summary that knows nothing about the change. So a redaction that turns valid
+// JSON into invalid JSON stops the publish, naming the file, instead of
+// uploading a bundle that looks fine and analyses nothing.
+func redactScanFile(name string, data []byte, redact func([]byte) []byte) ([]byte, error) {
+	out := redact(data)
+	if strings.HasSuffix(name, ".json") && json.Valid(data) && !json.Valid(out) {
+		return nil, fmt.Errorf("redaction made %s invalid JSON; nothing was published", name)
+	}
+	return out, nil
 }
 
 // readChangedFiles reads the changed-files manifest and exactly the files it

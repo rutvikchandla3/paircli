@@ -20,7 +20,7 @@ import (
 
 // Options configures Write and CommentMarkdown.
 type Options struct {
-	OutDir          string // .paircli/pr-<n>/<head-commit>
+	OutDir          string // where the report files are written
 	IncludePrompts  bool
 	MaxCommentLines int
 }
@@ -76,7 +76,9 @@ func Write(opts Options, rep *model.Report, attr *model.Attribution, sessions []
 		return fmt.Errorf("render: write: nil report")
 	}
 	sessDir := filepath.Join(opts.OutDir, "sessions")
-	if err := os.MkdirAll(sessDir, 0o755); err != nil {
+	// The scan folder is the user's evidence and, on a publish, holds redacted
+	// copies of their own source files: 0700, like the rest of the tree.
+	if err := os.MkdirAll(sessDir, 0o700); err != nil {
 		return fmt.Errorf("render: write: %w", err)
 	}
 	entries, err := os.ReadDir(sessDir)
@@ -465,8 +467,7 @@ func CommentMarkdown(rep *model.Report, opts Options) string {
 	if rep == nil {
 		return CommentMarker + "\n"
 	}
-	footer := fmt.Sprintf("<sub>Full report: `%s`. Signals describe the change, not the author.</sub>",
-		filepath.Join(opts.OutDir, "report.md"))
+	footer := "<sub>Signals describe the change, not the author.</sub>"
 	var b strings.Builder
 	b.WriteString(CommentMarker + "\n")
 	if rep.Coverage.Sessions == 0 {

@@ -54,9 +54,9 @@ go through this one entry point.
    than `clear`: "we could not check" is not "we checked and found
    nothing". Failures are noted on AUTH-2's `Data["llm_errors"]`, whether
    the pass failed entirely or only in part.
-9. **Render** — `render.BuildReport` and `render.Write` produce
-   `.paircli/pr-<n>/<head-commit>/`: `report.md`, `comment.md`,
-   `signals.json`, `authorship.json` and
+9. **Render** — `render.BuildReport` and `render.Write` produce the scan
+   folder (`~/.paircli/scans/<owner>__<repo>/pr-<n>/<head-commit>/`):
+   `report.md`, `comment.md`, `signals.json`, `authorship.json` and
    `sessions/<harness>-<id>.json`. Output is
    deterministic: identical input produces byte-identical files.
 10. **Agent Trace** — `agenttrace.WriteWith` exports the same attribution as
@@ -303,7 +303,7 @@ generated files, excluded from coverage ratios).
 ## Output folder
 
 ```
-.paircli/pr-<number>/<head-commit>/
+~/.paircli/scans/<owner>__<repo>/pr-<number>/<head-commit>/
   report.md                 # human-readable report — read this first
   comment.md                # PR comment body (--post upserts it)
   signals.json              # full structured report, the machine contract
@@ -313,5 +313,12 @@ generated files, excluded from coverage ratios).
   sessions/<harness>-<id>.json   # one normalized session record per linked session
 ```
 
-`.paircli/` is gitignored. Session paths outside the repo are rendered
-through `engine.Home` so reports never contain absolute home paths.
+The folder lives under the home directory, never in the repository being
+scanned, so a `git add .` in a checkout can never commit it (`--out` overrides
+the location). It is created 0700. Session paths outside the repo are rendered
+through `engine.Home` so reports never contain absolute home paths, and nothing
+written here does either — `comment.md` is posted to the PR verbatim.
+
+Output an earlier paircli wrote to `<repo>/.paircli/` is left exactly where it
+is; `scan` and `publish` print one line naming it, and `paircli doctor` lists it
+on its `scan` row.

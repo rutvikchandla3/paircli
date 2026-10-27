@@ -11,6 +11,7 @@ package scan
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -31,6 +32,7 @@ import (
 	"github.com/rutvikchandla3/paircli/internal/pr"
 	"github.com/rutvikchandla3/paircli/internal/render"
 	"github.com/rutvikchandla3/paircli/internal/snapshot"
+	"github.com/rutvikchandla3/paircli/internal/state"
 )
 
 // CommentMarker is the HTML comment every paircli PR comment starts with. A
@@ -42,7 +44,7 @@ type Options struct {
 	Repo            string         // "owner/repo"
 	Number          int            // PR number
 	CWD             string         // where scan was invoked
-	OutDir          string         // default <repo root or CWD>/.paircli/pr-<n>/<head-commit>
+	OutDir          string         // default ~/.paircli/scans/<owner>__<repo>/pr-<n>/<head-commit>
 	Runner          pr.Runner      // gh runner; pr.GH{} in the CLI
 	Config          *config.Config // nil → config.Load(repo root)
 	NoHooks         bool           // skip hook-log records
@@ -105,16 +107,24 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	includePrompts := cfg.Comment.IncludePrompts || o.IncludePrompts
 	outDir := o.OutDir
 	if outDir == "" {
-		base := root
-		if base == "" {
-			base = o.CWD
+		// A scan's output belongs to the user, not to the repository being
+		// scanned: it is written under ~/.paircli/scans, never into a checkout,
+		// so nothing paircli produces can be committed by accident. The zip
+		// entry prefix is still .paircli/pr-<n>/<head> (see internal/publish).
+		owner, repo, ok := strings.Cut(o.Repo, "/")
+		if !ok || owner == "" || repo == "" {
+			return nil, fmt.Errorf("scan: %q is not owner/repo, so the scan output folder cannot be named; pass --out", o.Repo)
 		}
-		outDir = filepath.Join(base, ".paircli", fmt.Sprintf("pr-%d", o.Number), artifactCommitDir(p))
+		outDir = state.ScanDir(owner, repo, o.Number, artifactCommitDir(p))
+		if outDir == "" {
+			return nil, errors.New("scan: cannot resolve the home directory to write the scan output to; pass --out")
+		}
 	}
 	// Create it now rather than leaving it to render.Write: the snapshot is
 	// written into outDir earlier in the pipeline, and on a first scan the
-	// folder does not exist yet.
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
+	// folder does not exist yet. 0700, like ~/.paircli/state: these are the
+	// user's artifacts and, on a publish, redacted copies of their own source.
+	if err := os.MkdirAll(outDir, 0o700); err != nil {
 		return nil, fmt.Errorf("scan: create output folder %s: %w", outDir, err)
 	}
 
@@ -254,9 +264,10 @@ func artifactCommitDir(pr *model.PR) string {
 }
 
 // RepoRoot returns the git repository root containing cwd, but only when that
-// repository's origin remote is repo (case-insensitive); otherwise "" — the
-// caller then falls back to cwd and to the default configuration. repo may be
-// "" to resolve the root without checking the remote.
+// repository's origin remote is repo (case-insensitive); otherwise "". The
+// callers use it to find the repository's .paircli.json and nothing else: scan
+// output no longer depends on it, so "" means the default configuration and
+// nothing more. repo may be "" to resolve the root without checking the remote.
 func RepoRoot(cwd, repo string) string {
 	if cwd == "" {
 		return ""

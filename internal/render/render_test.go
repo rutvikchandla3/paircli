@@ -423,12 +423,17 @@ func TestWrite_FilesAndStaleCleanup(t *testing.T) {
 	if _, err := os.Stat(want); err != nil {
 		t.Errorf("expected session file %s: %v", want, err)
 	}
+	// comment.md is posted to the PR as-is, so it must carry no local path: not
+	// the scan folder it was written to, not the home directory that folder now
+	// lives under.
 	data, err := os.ReadFile(filepath.Join(out, "comment.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(data), filepath.Join(out, "report.md")) {
-		t.Errorf("comment should point at the report path:\n%s", data)
+	for _, banned := range []string{out, os.Getenv("HOME")} {
+		if banned != "" && strings.Contains(string(data), banned) {
+			t.Errorf("comment.md carries the local path %q:\n%s", banned, data)
+		}
 	}
 }
 

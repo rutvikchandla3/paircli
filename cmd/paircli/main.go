@@ -84,7 +84,7 @@ Usage:
   paircli version                           print the version
 
 scan flags:
-  --out DIR               output folder (default <repo>/.paircli/pr-<n>/<head-commit>)
+  --out DIR               output folder (default ~/.paircli/scans/<owner>__<repo>/pr-<n>/<head-commit>)
   --post                  create or update the PR comment
   --include-prompts       let comment.md carry prompt text
   --llm PROVIDER          none | anthropic | claude-cli | pi | http (default: config)

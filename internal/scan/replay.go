@@ -89,7 +89,8 @@ func Replay(ctx context.Context, o ReplayOptions) (*Result, error) {
 		sigs = Merge(ec, sigs, snap.Judgments, nil, nil)
 	}
 
-	if err := os.MkdirAll(o.OutDir, 0o755); err != nil {
+	// 0700, like the folder a scan writes: a replay writes the same artifacts.
+	if err := os.MkdirAll(o.OutDir, 0o700); err != nil {
 		return nil, fmt.Errorf("replay: create output folder %s: %w", o.OutDir, err)
 	}
 	rep := render.BuildReport(render.BuildInput{

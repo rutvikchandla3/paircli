@@ -118,6 +118,7 @@ is never skipped.
 | --- | --- |
 | `~/.paircli/bin/paircli` | the installed binary |
 | `~/.paircli/state/` | `setup.json`, `publications/`, `locks/`, journals |
+| `~/.paircli/scans/<owner>__<repo>/pr-<n>/<head>/` | one scan's output folder (0700) |
 | `~/.paircli/logs/` | `setup-*.log`, `publish-*.log` |
 | `~/.paircli/hook-errors.log` | hook failures |
 | `~/.paircli/auth.json` | the credential (0600) |

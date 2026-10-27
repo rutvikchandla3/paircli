@@ -306,10 +306,17 @@ func e2eAssertComment(t *testing.T, w *world) {
 // checked there in full and the exemption is asserted to be the only one.
 func e2eAssertNoSecret(t *testing.T, w *world) {
 	t.Helper()
-	sessDir := filepath.Join(w.outDir, "sessions")
+	e2eAssertNoSecretIn(t, w.outDir)
+}
+
+// e2eAssertNoSecretIn is e2eAssertNoSecret over an arbitrary output folder, so
+// a scan that took its default location can be checked just the same.
+func e2eAssertNoSecretIn(t *testing.T, outDir string) {
+	t.Helper()
+	sessDir := filepath.Join(outDir, "sessions")
 	leaked, transcriptCopies := 0, 0
 
-	err := filepath.WalkDir(w.outDir, func(path string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(outDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
@@ -320,7 +327,7 @@ func e2eAssertNoSecret(t *testing.T, w *world) {
 		if !strings.Contains(string(raw), e2eEnvValue) {
 			return nil
 		}
-		rel, _ := filepath.Rel(w.outDir, path)
+		rel, _ := filepath.Rel(outDir, path)
 		if strings.HasPrefix(path, sessDir+string(filepath.Separator)) {
 			transcriptCopies++
 			return nil

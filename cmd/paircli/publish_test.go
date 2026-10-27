@@ -262,6 +262,7 @@ func (s *pubS3) uploadedZip(t *testing.T) map[string][]byte {
 type pubHarness struct {
 	t       *testing.T
 	repoDir string
+	home    string // the temp HOME scans write their output under
 	gh      *pubGH
 	api     *pubAPI
 	s3      *pubS3
@@ -275,10 +276,17 @@ type pubHarness struct {
 	sleeps          []time.Duration
 }
 
+// scanFile is a path inside the scan folder a publish writes for head, which
+// lives under the harness's temp HOME rather than in the repository.
+func (h *pubHarness) scanFile(head, name string) string {
+	return filepath.Join(h.home, ".paircli", "scans", "acme__shop", "pr-7", head, filepath.FromSlash(name))
+}
+
 func newPubHarness(t *testing.T) *pubHarness {
 	t.Helper()
-	t.Setenv("HOME", t.TempDir())
-	h := &pubHarness{t: t, repoDir: t.TempDir(), gh: &pubGH{}, api: newPubAPI(t), s3: &pubS3{},
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	h := &pubHarness{t: t, home: home, repoDir: t.TempDir(), gh: &pubGH{}, api: newPubAPI(t), s3: &pubS3{},
 		stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{}}
 
 	projects, other := t.TempDir(), t.TempDir()
@@ -432,8 +440,11 @@ func TestPublishEndToEndWithWait(t *testing.T) {
 	if !strings.Contains(h.stdout.String(), "published https://pair.sh/acme/shop/pull/7") {
 		t.Errorf("stdout = %q", h.stdout)
 	}
-	if _, err := os.Stat(filepath.Join(h.repoDir, ".paircli", "pr-7", pubHead, "signals.json")); err != nil {
+	if _, err := os.Stat(h.scanFile(pubHead, "signals.json")); err != nil {
 		t.Errorf("scan output is not under the head folder: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(h.repoDir, ".paircli")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the scan wrote into the repository: %v", err)
 	}
 }
 
@@ -661,7 +672,7 @@ func TestPublishRerunsForAPushThatArrivedMidRun(t *testing.T) {
 	if !strings.Contains(string(log), "publishing again") || strings.Count(string(log), "publishing https://github.com/acme/shop/pull/7") != 2 {
 		t.Errorf("log does not show both runs:\n%s", log)
 	}
-	if _, err := os.Stat(filepath.Join(h.repoDir, ".paircli", "pr-7", newHead, "signals.json")); err != nil {
+	if _, err := os.Stat(h.scanFile(newHead, "signals.json")); err != nil {
 		t.Errorf("the rerun did not scan the new head: %v", err)
 	}
 }

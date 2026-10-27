@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -250,6 +251,8 @@ func TestRun_Minimal(t *testing.T) {
 }
 
 func TestRun_DefaultOutDirIncludesHeadCommit(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	repoRoot := t.TempDir()
 	scanGitRepo(t, repoRoot, "git@github.com:acme/shop.git")
 
@@ -274,15 +277,30 @@ func TestRun_DefaultOutDirIncludesHeadCommit(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	want := filepath.Join(repoRoot, ".paircli", "pr-7", "aaaaaaa1")
+	// The default is a home directory, never the repository being scanned.
+	want := filepath.Join(home, ".paircli", "scans", "acme__shop", "pr-7", "aaaaaaa1")
 	if res.OutDir != want {
 		t.Fatalf("OutDir = %q, want %q", res.OutDir, want)
+	}
+	if _, err := os.Stat(filepath.Join(repoRoot, ".paircli")); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("the scan wrote into the repository: %v", err)
+	}
+	// 0700, like ~/.paircli/state: on a publish these hold redacted copies of
+	// the user's own source files.
+	info, err := os.Stat(res.OutDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Errorf("scan folder mode = %o, want 700", got)
 	}
 }
 
 // TestRun_OutDirUsesHeadRefOid checks that the output folder is named after
 // headRefOid, not the last entry of the (capped) commit list.
 func TestRun_OutDirUsesHeadRefOid(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
 	repoRoot := t.TempDir()
 	scanGitRepo(t, repoRoot, "git@github.com:acme/shop.git")
 
@@ -308,7 +326,7 @@ func TestRun_OutDirUsesHeadRefOid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
-	if want := filepath.Join(repoRoot, ".paircli", "pr-7", head); res.OutDir != want {
+	if want := filepath.Join(home, ".paircli", "scans", "acme__shop", "pr-7", head); res.OutDir != want {
 		t.Fatalf("OutDir = %q, want %q", res.OutDir, want)
 	}
 	if res.Head != head {

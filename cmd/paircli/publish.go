@@ -364,6 +364,9 @@ func (p *publisher) run(ctx context.Context) error {
 		ReviewURL: state.ReviewURL(p.owner, p.repo, p.number), StartedAt: p.env.now().UTC(),
 	}
 	p.logf("publishing %s", p.rec.PRURL)
+	if note := legacyScanNote(p.dir, scan.RepoRoot(p.dir, p.owner+"/"+p.repo)); note != "" {
+		p.logf("%s", note)
+	}
 	p.save()
 
 	server, client, err := p.connect()

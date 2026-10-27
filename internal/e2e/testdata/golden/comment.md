@@ -8,4 +8,4 @@
 - ▲ **Human corrections:** 1 human correction (1 interrupt); 1 touched PR line. `DEC-1`
 - ▲ **Side-effect ledger:** Effects outside the diff: 1 migration. `EXP-1`
 
-<sub>Full report: `{root}/out/pr-482/report.md`. Signals describe the change, not the author.</sub>
+<sub>Signals describe the change, not the author.</sub>

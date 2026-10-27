@@ -155,7 +155,8 @@ func WriteWith(dir string, o Options, pr *model.PR, attr *model.Attribution, ses
 		return fmt.Errorf("agenttrace: write: %w", err)
 	}
 	b = append(b, '\n')
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// 0700: this lands in the scan folder, which holds the user's evidence.
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("agenttrace: write: %w", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, FileName), b, 0o644); err != nil {

@@ -87,7 +87,59 @@ func LogDir() string {
 
 // Key is the file-name stem shared by a PR's record and lock.
 func Key(owner, repo string, number int) string {
-	return fmt.Sprintf("%s__%s__%d", strings.ToLower(owner), strings.ToLower(repo), number)
+	return fmt.Sprintf("%s__%d", repoKey(owner, repo), number)
+}
+
+// repoKey is the per-repository stem shared by a PR's record, lock and scan
+// folder.
+func repoKey(owner, repo string) string {
+	return strings.ToLower(owner) + "__" + strings.ToLower(repo)
+}
+
+// ScanRoot returns ~/.paircli/scans, the root every scan's output folder lives
+// under. It is outside the repository on purpose: the artifacts are the user's
+// evidence, not the repository's, and nothing paircli writes may end up in a
+// customer's commit.
+func ScanRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".paircli", "scans")
+}
+
+// ScanDir returns the folder one scan writes to:
+// ~/.paircli/scans/<owner>__<repo>/pr-<n>/<head>. owner and repo are the halves
+// of the PR's "owner/repo". "" means the home directory could not be resolved,
+// which the caller must treat as an error: the fallback would be the repository
+// itself.
+func ScanDir(owner, repo string, number int, head string) string {
+	root := ScanRoot()
+	if root == "" {
+		return ""
+	}
+	return filepath.Join(root, repoKey(owner, repo), fmt.Sprintf("pr-%d", number), head)
+}
+
+// LegacyScanDir returns the scan folder an earlier paircli wrote into the
+// repository at dir — <dir>/.paircli, when it holds a pr-<n> folder — or "".
+// Its output is never moved or deleted; this only exists so a caller can tell
+// the user it is there and where new scans now write.
+func LegacyScanDir(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	legacy := filepath.Join(dir, ".paircli")
+	entries, err := os.ReadDir(legacy)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if e.IsDir() && strings.HasPrefix(e.Name(), "pr-") {
+			return legacy
+		}
+	}
+	return ""
 }
 
 func publicationPath(owner, repo string, number int) string {

@@ -47,10 +47,11 @@ type Coverage struct {
 type LinkMethod string
 
 const (
-	LinkSHAExact    LinkMethod = "sha_exact"    // a hook/transcript recorded a PR commit SHA
-	LinkSHAAncestor LinkMethod = "sha_ancestor" // the session started on top of a PR commit
-	LinkContent     LinkMethod = "content"      // the session's edits produced PR lines
-	LinkHeuristic   LinkMethod = "heuristic"    // repo + branch + time window only
+	LinkSHAExact    LinkMethod = "sha_exact"       // a hook/transcript recorded a PR commit SHA
+	LinkSHAAncestor LinkMethod = "sha_ancestor"    // the session started on top of a PR commit
+	LinkAuthored    LinkMethod = "commit_authored" // the session ran git commit with a PR commit's message
+	LinkContent     LinkMethod = "content"         // the session's edits produced PR lines
+	LinkHeuristic   LinkMethod = "heuristic"       // repo + branch + time window only
 	LinkNone        LinkMethod = "none"
 )
 

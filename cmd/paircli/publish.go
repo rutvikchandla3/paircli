@@ -409,6 +409,11 @@ func (p *publisher) run(ctx context.Context) error {
 	}
 	p.rec.HeadSHA = res.Head
 	p.logf("scanned %s: %d linked sessions", res.OutDir, len(res.Report.Sessions))
+	if len(res.Report.Sessions) == 0 {
+		p.logf("no agent session on this machine is linked to the PR (%d from its dates were set aside); a session links "+
+			"when it ran `git commit` with one of the PR's commit messages, was on the PR's branch, or edited its files, "+
+			"and only Claude Code, Codex and Pi sessions are read", res.Report.Coverage.DroppedSessions)
+	}
 
 	p.step(state.StepCapture)
 	capRedactor := redact.New()

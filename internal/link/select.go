@@ -14,12 +14,15 @@ import (
 // place), then keeps sessions that plausibly belong to pr: they must overlap
 // w, and either their RepoRemote matches pr.Repo (case-insensitively) or
 // (when RepoRemote is unknown) at least one non-failed edit's RelPath is a
-// PR file. Returns the candidates sorted by Start and the number dropped.
+// PR file. A session that created one of the PR's commits (see
+// authoredCommits) is kept whatever repo it ran in: agents commit into other
+// repos from wherever they were started. Returns the candidates sorted by
+// Start and the number dropped.
 func Select(pr *model.PR, sessions []*model.Session, w Window) (cands []*model.Session, dropped int) {
 	for _, s := range sessions {
 		fillRepoRoot(s)
 		fillRelPaths(s, pr)
-		if isCandidate(pr, s, w) {
+		if isCandidate(pr, s, w) || (sessionOverlaps(s, w) && len(authoredCommits(pr, s)) > 0) {
 			cands = append(cands, s)
 		} else {
 			dropped++

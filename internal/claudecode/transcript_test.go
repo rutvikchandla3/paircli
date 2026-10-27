@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -728,4 +729,32 @@ func mustRaw(t *testing.T, v any) json.RawMessage {
 		t.Fatalf("marshal: %v", err)
 	}
 	return b
+}
+
+// A session that moved off the PR branch (checked out main, or a detached HEAD
+// for a read-only look) must still report the branch it did the work on.
+func TestParse_RecordsEveryBranchTheSessionWasOn(t *testing.T) {
+	line := func(uuid, branch, ts string) string {
+		return `{"type":"user","uuid":"` + uuid + `","sessionId":"sb","cwd":"/w","gitBranch":"` + branch +
+			`","timestamp":"` + ts + `","message":{"role":"user","content":"hi"}}`
+	}
+	path := filepath.Join(t.TempDir(), "sb.jsonl")
+	body := line("u1", "feat/x", "2026-10-27T10:00:00.000Z") + "\n" +
+		line("u2", "feat/x", "2026-10-27T10:01:00.000Z") + "\n" +
+		line("u3", "HEAD", "2026-10-27T10:02:00.000Z") + "\n" +
+		line("u4", "main", "2026-10-27T10:03:00.000Z") + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	sessions, err := ParseFile(path)
+	if err != nil || len(sessions) != 1 {
+		t.Fatalf("ParseFile: %v, %d sessions", err, len(sessions))
+	}
+	s := sessions[0]
+	if s.Branch != "main" || strings.Join(s.Branches, ",") != "feat/x,main" {
+		t.Errorf("Branch = %q, Branches = %v, want main and [feat/x main] (HEAD left out)", s.Branch, s.Branches)
+	}
+	if !s.OnBranch("feat/x") || s.OnBranch("HEAD") || s.OnBranch("") {
+		t.Error("OnBranch is wrong")
+	}
 }

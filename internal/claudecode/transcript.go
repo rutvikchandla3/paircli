@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -222,10 +223,11 @@ type pendingCall struct {
 type ccBuilder struct {
 	session *model.Session
 
-	cwd     string
-	branch  string
-	version string
-	title   string
+	cwd      string
+	branch   string
+	branches []string // distinct gitBranch values in order of first appearance, detached HEAD excluded
+	version  string
+	title    string
 
 	lastTS         time.Time
 	lastPermission model.PermissionMode
@@ -302,6 +304,9 @@ func (b *ccBuilder) absorb(e ccEntry, sourcePath string) {
 	}
 	if e.GitBranch != "" {
 		b.branch = e.GitBranch
+		if e.GitBranch != "HEAD" && !slices.Contains(b.branches, e.GitBranch) {
+			b.branches = append(b.branches, e.GitBranch)
+		}
 	}
 	if e.Version != "" {
 		b.version = e.Version
@@ -902,6 +907,7 @@ func (b *ccBuilder) finish() *model.Session {
 
 	b.session.CWD = b.cwd
 	b.session.Branch = b.branch
+	b.session.Branches = b.branches
 	b.session.HarnessVersion = b.version
 	b.session.Title = b.title
 	b.session.Capture = model.CaptureReconstructed

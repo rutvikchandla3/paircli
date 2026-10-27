@@ -119,7 +119,7 @@ func TestBuildBundleLayoutAndBundleJSON(t *testing.T) {
 	if meta["schema_version"] != float64(1) || meta["created_by"] != "paircli 0.3.0" || meta["repo"] != "acme/repo" ||
 		meta["pull_number"] != float64(42) || meta["head_sha"] != testHead || meta["scan_dir"] != ".paircli/pr-42/"+testHead ||
 		meta["created_at"] != "2026-10-11T12:00:00Z" || meta["raw_sessions"] != false ||
-		redaction["applied"] != true || redaction["rules_version"] != "1" {
+		redaction["applied"] != true || redaction["rules_version"] != redact.RulesVersion {
 		t.Errorf("bundle.json = %s", files["bundle.json"])
 	}
 	// One redaction from the scan's rendered text, one found in snapshot.json here.
@@ -284,7 +284,7 @@ func changedManifest(t *testing.T, withFile bool) string {
 		"schema_version": 1, "tool": "paircli test", "created_at": "2026-10-11T12:00:00Z",
 		"repo": "acme/repo", "pull_number": 42, "head_sha": testHead, "base_sha": "",
 		"base_ref": "main", "base_kind": "",
-		"redaction": map[string]any{"rules_version": "1"},
+		"redaction": map[string]any{"rules_version": redact.RulesVersion},
 		"limits":    map[string]any{},
 		"totals":    map[string]any{"files": 1, "sides_written": 1},
 		"files":     files,
@@ -492,8 +492,8 @@ func TestBuildBundleKeepsSnapshotValidJSON(t *testing.T) {
 }
 
 func TestRedactScanFileRefusesToBreakJSON(t *testing.T) {
-	breaks := func(b []byte) []byte { return bytes.ReplaceAll(b, []byte(`"x"`), []byte(`\[REDACTED]`)) }
-	keeps := func(b []byte) []byte { return bytes.ReplaceAll(b, []byte(`"x"`), []byte(`"[REDACTED]"`)) }
+	breaks := func(b []byte) ([]byte, error) { return bytes.ReplaceAll(b, []byte(`"x"`), []byte(`\[REDACTED]`)), nil }
+	keeps := func(b []byte) ([]byte, error) { return bytes.ReplaceAll(b, []byte(`"x"`), []byte(`"[REDACTED]"`)), nil }
 	in := []byte(`{"a":"x","b":"x"}`)
 
 	if _, err := redactScanFile("snapshot.json", in, breaks); err == nil || !strings.Contains(err.Error(), "snapshot.json") {
@@ -508,5 +508,167 @@ func TestRedactScanFileRefusesToBreakJSON(t *testing.T) {
 	}
 	if _, err := redactScanFile("signals.json", []byte(`not json "x"`), breaks); err != nil {
 		t.Errorf("already-invalid input: %v", err)
+	}
+	// The pass the bundle really uses for a JSON file redacts it and keeps it
+	// valid, rewriting nothing but the strings that held a secret.
+	secret := []byte(`{"v":"a&` + bundleToken() + `","password":"hunter2hunter2","n":[1,2.50]}`)
+	want := `{"v":"a\u0026[REDACTED:github_token]","password":"[REDACTED:secret_assignment]","n":[1,2.50]}`
+	r := redact.NewWith(nil, "")
+	out, err := redactScanFile("snapshot.json", secret, scanFileRedaction("snapshot.json", r))
+	if err != nil || !json.Valid(out) || string(out) != want {
+		t.Errorf("redact.JSON: out %s err %v, want %s", out, err, want)
+	}
+}
+
+// A secret value that is a JSON number cannot be redacted without changing the
+// file's shape, so the publish stops, naming the file, as it did when redacting
+// the bytes broke the file.
+func TestRedactScanFileRefusesASecretNumber(t *testing.T) {
+	r := redact.NewWith([]string{"NUM_SECRET_KEY=987654321012345"}, "")
+	in := []byte(`{"id": 987654321012345, "other": 12}`)
+	if _, err := redactScanFile("signals.json", in, scanFileRedaction("signals.json", r)); err == nil ||
+		!strings.Contains(err.Error(), "signals.json") || !strings.Contains(err.Error(), "nothing was published") {
+		t.Errorf("err = %v, want a refusal naming signals.json", err)
+	}
+	// As a string it is redacted like any other.
+	out, err := redactScanFile("signals.json", []byte(`{"id": "987654321012345"}`), scanFileRedaction("signals.json", r))
+	if err != nil || string(out) != `{"id": "[REDACTED:env_secret]"}` {
+		t.Errorf("string: out %s err %v", out, err)
+	}
+	opts := buildOptions(t, scanFolder(t, map[string]string{"snapshot.json": string(in)}))
+	opts.Redactor = r
+	if _, err := BuildBundle(opts); err == nil || !strings.Contains(err.Error(), "snapshot.json") {
+		t.Errorf("BuildBundle: err = %v", err)
+	}
+}
+
+// Every JSON scan file is written by encoding/json, which spells < > & as
+// \u003c \u003e \u0026: a token right after one must not survive into the bundle.
+func TestBuildBundleRedactsTokensAfterHTMLEscapesInEveryJSONFile(t *testing.T) {
+	jsonFiles := []string{"signals.json", "authorship.json", "snapshot.json", "agent-trace.json", "sessions/claude-code-s1.json"}
+	texts := []string{"see <" + bundleToken() + ">", "a&" + bundleToken(), ">" + bundleToken() + "<"}
+	extra := map[string]string{}
+	for _, name := range jsonFiles {
+		data, err := json.MarshalIndent(map[string]any{"v": texts, "n": 9007199254740993}, "", "  ")
+		if err != nil {
+			t.Fatal(err)
+		}
+		extra[name] = string(data) + "\n"
+	}
+	b, err := BuildBundle(buildOptions(t, scanFolder(t, extra)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, files, _ := readZip(t, b.Path)
+	for _, name := range jsonFiles {
+		got := files[".paircli/pr-42/"+testHead+"/"+name]
+		var v struct {
+			V []string    `json:"v"`
+			N json.Number `json:"n"`
+		}
+		if err := json.Unmarshal(got, &v); err != nil {
+			t.Fatalf("%s is not valid JSON: %v\n%s", name, err, got)
+		}
+		if strings.Contains(string(got), bundleToken()) || len(v.V) != 3 || v.N != "9007199254740993" {
+			t.Errorf("%s: %s", name, got)
+		}
+		for i, text := range texts {
+			if want := strings.Replace(text, bundleToken(), "[REDACTED:github_token]", 1); v.V[i] != want {
+				t.Errorf("%s: got %q, want %q", name, v.V[i], want)
+			}
+		}
+	}
+	// 3 in each of the 5 files, plus the scan's own count.
+	if b.Counts["github_token"] != 3*len(jsonFiles)+1 {
+		t.Errorf("counts = %v", b.Counts)
+	}
+}
+
+// report.md and comment.md are whole documents, so a PEM block in one is
+// redacted across its lines.
+func TestBuildBundleRedactsAPEMBlockInTheReports(t *testing.T) {
+	pem := "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\nQyNTUxOQAAACD3\n-----END OPENSSH PRIVATE KEY-----"
+	doc := "# report\n\n```\n" + pem + "\n```\n"
+	b, err := BuildBundle(buildOptions(t, scanFolder(t, map[string]string{"report.md": doc, "comment.md": doc})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, files, _ := readZip(t, b.Path)
+	for _, name := range []string{"report.md", "comment.md"} {
+		// FileBytes keeps the newlines the block held.
+		if got := string(files[".paircli/pr-42/"+testHead+"/"+name]); got != "# report\n\n```\n[REDACTED:private_key]\n\n\n\n```\n" {
+			t.Errorf("%s: got %q", name, got)
+		}
+	}
+	if b.Counts["private_key"] != 2 {
+		t.Errorf("counts = %v", b.Counts)
+	}
+}
+
+// Every JSON entry of a bundle parses, whatever the scan files hold.
+func TestBuildBundleJSONEntriesAllParse(t *testing.T) {
+	tricky := map[string]any{
+		"lines": []string{
+			"models.Job{ExecutionToken: &token, Lease: &live}", "x\tapi_key:\tabcdefgh12345678",
+			"password := \"hunter2hunter2\"", "Authorization: Bearer abcdef1234567890 <" + bundleToken() + ">",
+			"aws_secret_access_key=" + strings.Repeat("wJalrXUtnFEMI/K7MDENG", 3),
+		},
+		"password": "hunter2hunter2",
+	}
+	data, err := json.MarshalIndent(tricky, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	extra := map[string]string{}
+	for _, name := range []string{"signals.json", "authorship.json", "snapshot.json", "agent-trace.json", "sessions/codex-s2.json"} {
+		extra[name] = string(data) + "\n"
+	}
+	opts := buildOptions(t, changedScanFolder(t, extra))
+	opts.ChangedFiles = true
+	b, err := BuildBundle(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names, files, _ := readZip(t, b.Path)
+	parsed := 0
+	for _, name := range names {
+		if !strings.HasSuffix(name, ".json") {
+			continue
+		}
+		if !json.Valid(files[name]) {
+			t.Errorf("%s is not valid JSON:\n%s", name, files[name])
+		}
+		parsed++
+	}
+	if parsed < 7 {
+		t.Errorf("only %d JSON entries in %v", parsed, names)
+	}
+}
+
+// A scan file with nothing to redact goes into the bundle byte for byte, its
+// layout, key order and numbers untouched.
+func TestBuildBundleCopiesACleanJSONFileUnchanged(t *testing.T) {
+	signals := "{\n  \"z\": 9007199254740993,\n  \"a\": 1.5e-7,\n  \"cmd\": \"a \\u0026\\u0026 b \\u003cc\\u003e\"\n}\n"
+	b, err := BuildBundle(buildOptions(t, scanFolder(t, map[string]string{"signals.json": signals})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, files, _ := readZip(t, b.Path)
+	if got := string(files[".paircli/pr-42/"+testHead+"/signals.json"]); got != signals {
+		t.Errorf("got %q, want %q", got, signals)
+	}
+}
+
+// A JSON scan file that does not parse is still redacted, by the byte pass.
+func TestBuildBundleRedactsAnInvalidJSONFileByBytes(t *testing.T) {
+	broken := `{"cmd":"export TOKEN=` + bundleToken() + `",` + "\n"
+	b, err := BuildBundle(buildOptions(t, scanFolder(t, map[string]string{"agent-trace.json": broken})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, files, _ := readZip(t, b.Path)
+	want := string(redact.NewWith(nil, "").Bytes([]byte(broken)))
+	if got := string(files[".paircli/pr-42/"+testHead+"/agent-trace.json"]); got != want || strings.Contains(got, bundleToken()) {
+		t.Errorf("got %q, want %q", got, want)
 	}
 }

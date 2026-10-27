@@ -121,7 +121,7 @@ also posts one comment with the pair.sh link on the PR (skip it with
 ## Redaction
 
 Everything `paircli publish` uploads, and every string the reports render,
-goes through `internal/redact` (rules version `1`). A match is replaced by
+goes through `internal/redact` (rules version `2`). A match is replaced by
 `[REDACTED:<kind>]`; redacting twice changes nothing. The kinds:
 
 | Kind | What it matches |
@@ -129,7 +129,7 @@ goes through `internal/redact` (rules version `1`). A match is replaced by
 | `github_token` | `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` and `github_pat_` tokens |
 | `api_key` | `sk-` keys (at least 20 characters with a digit or capital, so slugs are left alone) |
 | `aws_access_key` | `AKIA` / `ASIA` access key ids |
-| `aws_secret` | the value of `aws_secret_access_key = ...` |
+| `aws_secret` | the whole value of `aws_secret_access_key = ...` (40 characters or more) |
 | `slack_token` | `xoxb-`, `xoxp-`, `xoxa-`, `xoxs-`, `xoxr-`, `xoxo-`, `xapp-` tokens |
 | `jwt` | three-part `eyJ...` JSON web tokens |
 | `bearer` | the credential in `Authorization: Bearer ...` and `Authorization: Basic ...` |
@@ -146,6 +146,21 @@ Every other rule still runs line by line, exactly as it does on a transcript, so
 a rule whose separator can absorb a newline cannot pair a name on one line with
 a value on another and redact a line that holds no secret. `private_key` is dead
 in line-by-line mode, which is why the distinction exists.
+`report.md` and `comment.md` are redacted the same way, so a PEM block in
+either is removed whole.
+
+The JSON scan files (`signals.json`, `authorship.json`, `snapshot.json`,
+`agent-trace.json`, `sessions/*.json`) are redacted string by string: each
+string, object keys included, is decoded first, so the rules see the text
+itself rather than its JSON escapes (`<`, `>` and `&` are written `\u003c`,
+`\u003e`, `\u0026`, which would otherwise hide a token right after one). A
+value is redacted together with its key, so `"password": "..."` is still an
+assignment. Only the strings that change are rewritten; everything else in the
+file, key order and numbers included, is uploaded exactly as the scan wrote it.
+Only string tokens are redacted: a number is never changed, so a number equal to
+one of the secret environment or `.npmrc` values refuses the publish, naming the
+file, rather than upload it. A file that does not parse is redacted line by line
+instead.
 
 Generic assignments redact only values that look like secrets: at least 8
 characters, not a path, URL, boolean, number, placeholder (`$VAR`, `<token>`,

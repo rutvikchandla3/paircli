@@ -145,7 +145,7 @@ func readScanFiles(o BundleOptions) ([]entry, map[string]int, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		redacted, err := redactScanFile(name, data, redactor.Bytes)
+		redacted, err := redactScanFile(name, data, scanFileRedaction(name, redactor))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -164,13 +164,44 @@ func readScanFiles(o BundleOptions) ([]entry, map[string]int, error) {
 	return out, redactor.Counts(), nil
 }
 
+// scanFileRedaction is how one scan file is redacted. A JSON file has the
+// decoded text of its strings redacted, because its escaped spelling hides
+// secrets from the rules (see redact.JSON). report.md and comment.md are whole
+// documents, so a PEM block in one is redacted across its lines the way a
+// changed file's is.
+func scanFileRedaction(name string, r *redact.Redactor) func([]byte) ([]byte, error) {
+	switch {
+	case strings.HasSuffix(name, ".json"):
+		return r.JSON
+	case strings.HasSuffix(name, ".md"):
+		return infallible(r.FileBytes)
+	}
+	return infallible(r.Bytes)
+}
+
+func infallible(f func([]byte) []byte) func([]byte) ([]byte, error) {
+	return func(b []byte) ([]byte, error) { return f(b), nil }
+}
+
 // redactScanFile redacts one scan file. The AI pipeline parses the .json files,
 // and a file it cannot parse is not an error there: it quietly falls back to a
 // summary that knows nothing about the change. So a redaction that turns valid
 // JSON into invalid JSON stops the publish, naming the file, instead of
-// uploading a bundle that looks fine and analyses nothing.
-func redactScanFile(name string, data []byte, redact func([]byte) []byte) ([]byte, error) {
-	out := redact(data)
+// uploading a bundle that looks fine and analyses nothing. redact.JSON keeps
+// valid JSON valid by construction and falls back to Bytes only for input that
+// already fails json.Valid, which this check skips; the check stays to catch a
+// bug in redact.JSON itself.
+//
+// A secret redaction cannot remove, a JSON number equal to a secret value,
+// stops the publish the same way.
+func redactScanFile(name string, data []byte, scrub func([]byte) ([]byte, error)) ([]byte, error) {
+	out, err := scrub(data)
+	if errors.Is(err, redact.ErrSecretNumber) {
+		return nil, fmt.Errorf("%s holds a secret as a JSON number, which redaction cannot remove; nothing was published", name)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("redacting %s: %w; nothing was published", name, err)
+	}
 	if strings.HasSuffix(name, ".json") && json.Valid(data) && !json.Valid(out) {
 		return nil, fmt.Errorf("redaction made %s invalid JSON; nothing was published", name)
 	}

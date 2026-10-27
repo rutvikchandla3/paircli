@@ -280,7 +280,7 @@ generated files, excluded from coverage ratios).
 |---|---|
 | `internal/model` | Frozen types: sessions, events, PRs, signals, attribution, reports |
 | `internal/config` | `.paircli.json` + defaults |
-| `internal/redact` | Secret redaction: `Text` for rendered strings, a counting `Redactor` for files and raw transcripts (rules version `1`, see CONFIGURATION.md) |
+| `internal/redact` | Secret redaction: `Text` for rendered strings, a counting `Redactor` for files and raw transcripts (rules version `2`, see CONFIGURATION.md) |
 | `internal/capture` | Two-phase incremental capture of raw Claude Code / Codex transcript ranges, with cursors |
 | `internal/publish` | Bundle builder (deterministic zip), revision journal, publication API client (reserve, S3, finalize, analysis) |
 | `internal/prcomment`, `internal/notify` | The Pair link PR comment (owned by the `gh` user) and desktop notifications |

@@ -5,7 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
+
+// The first run of a freshly written script can take seconds on a loaded
+// machine (Gatekeeper scans it), which the production bound does not allow for.
+func init() { resolveTimeout = 30 * time.Second }
 
 // fakeGH puts a `gh` script with the given body first on PATH.
 func fakeGH(t *testing.T, body string) {

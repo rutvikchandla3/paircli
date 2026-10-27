@@ -11,7 +11,7 @@ import (
 
 // resolveTimeout bounds `gh pr view`: the hook runs inside the agent's tool
 // loop, so it must not wait on a slow network.
-const resolveTimeout = 3 * time.Second
+var resolveTimeout = 3 * time.Second
 
 // ResolveCurrentBranchPR returns the open pull request for the branch checked
 // out in dir, using `gh pr view`. It fails when gh is missing, dir is not a

@@ -1,6 +1,7 @@
 package publish
 
 import (
+	"math"
 	"os"
 	"path/filepath"
 	"sync"
@@ -127,9 +128,14 @@ func TestRevisionRecoversFromACorruptJournal(t *testing.T) {
 
 func TestRevisionRejectsOutOfRangeValues(t *testing.T) {
 	journalFixture(t)
-	now := int64(-5)
+	now := int64(math.MaxInt64) // the backend integer range ends below this
 	clock(t, &now)
 	if _, err := Revision("s", testHead, "aa", 8); err == nil {
-		t.Error("a non-positive revision was issued")
+		t.Error("a revision at the top of the integer range was issued")
+	}
+	// A clock that is not positive cannot go below the journal's own floor.
+	now = -5
+	if got := mustRevision(t, "other", testHead, "aa", 8); got != 1 {
+		t.Errorf("revision with a negative clock = %d, want latest+1 = 1", got)
 	}
 }

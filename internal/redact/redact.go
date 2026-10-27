@@ -302,21 +302,68 @@ func Default() *Redactor {
 func Text(s string) string { return Default().Text(s) }
 
 // Text returns s with secrets removed.
-func (r *Redactor) Text(s string) string {
+func (r *Redactor) Text(s string) string { return r.scrub(s, false) }
+
+// FileBytes returns b with secrets removed, running the rules over the whole
+// buffer instead of line by line.
+//
+// Bytes splits on "\n" so that no rule can ever join two lines of a JSONL
+// transcript, which is right for a transcript and fatal for a source file: the
+// private_key rule is written to span lines, so through Bytes it never matches,
+// and a whole PEM block in a changed file would ship verbatim.
+//
+// Line structure is preserved instead, which is what a caller that indexes the
+// result by line number needs — a diff hunk's old_start and new_start are
+// indices into the file at its revision. A match is replaced by the marker plus
+// the newlines it swallowed, so every line after a match keeps its number, at
+// the cost of the marker standing where the match began and the lines it
+// covered being left empty.
+//
+// What is preserved exactly is the number of newlines. The one case where that
+// does not settle the line count is a match that runs to the end of a file with
+// no trailing newline: the marker re-emits the newlines the match held, so the
+// result ends with one where the input did not, and counting the last line the
+// usual way gives one fewer. Nothing after the match is shifted, so a caller
+// that indexes by line is unaffected; one that wants the file's own line count
+// should take it from the input.
+func (r *Redactor) FileBytes(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
+	return []byte(r.scrub(string(b), true))
+}
+
+// scrub runs every rule and then the exact literals over s. keepLines re-inserts
+// the newlines a replacement swallowed, so the result has the same number of
+// lines as the input.
+func (r *Redactor) scrub(s string, keepLines bool) string {
 	if s == "" {
 		return s
 	}
 	lower := strings.ToLower(s)
 	for i := range rules {
-		s, lower = r.apply(&rules[i], s, lower)
+		s, lower = r.apply(&rules[i], s, lower, keepLines)
 	}
 	for _, l := range r.literals {
 		if n := strings.Count(s, l.value); n > 0 {
-			s = strings.ReplaceAll(s, l.value, marker(l.kind))
+			// A literal can hold a real newline: the value of an environment
+			// variable, say. The JSON-escaped spelling of one holds a backslash
+			// and an "n" instead, and needs nothing.
+			s = strings.ReplaceAll(s, l.value, replacement(l.kind, l.value, keepLines))
 			r.add(l.kind, n)
 		}
 	}
 	return s
+}
+
+// replacement is what a match becomes: the marker, plus the newlines it
+// swallowed when the caller is keeping the line count.
+func replacement(kind, matched string, keepLines bool) string {
+	out := marker(kind)
+	if keepLines {
+		out += strings.Repeat("\n", strings.Count(matched, "\n"))
+	}
+	return out
 }
 
 // Bytes returns b with secrets removed. It works line by line so a rule can
@@ -341,7 +388,7 @@ func (r *Redactor) Bytes(b []byte) []byte {
 }
 
 // apply runs one rule over s and returns the new text and its lowercase form.
-func (r *Redactor) apply(ru *rule, s, lower string) (string, string) {
+func (r *Redactor) apply(ru *rule, s, lower string, keepLines bool) (string, string) {
 	if !hasAny(lower, ru.hints) {
 		return s, lower
 	}
@@ -360,7 +407,11 @@ func (r *Redactor) apply(ru *rule, s, lower string) (string, string) {
 			continue
 		}
 		out.WriteString(s[last:start])
-		out.WriteString(marker(ru.kind))
+		// The replaced span is the submatch group, not the whole match: a rule
+		// may match a prefix it does not replace (a "password =" before the
+		// value), and with keepLines the newlines that matter are the ones
+		// inside the span actually being replaced.
+		out.WriteString(replacement(ru.kind, s[start:end], keepLines))
 		last = end
 		n++
 	}

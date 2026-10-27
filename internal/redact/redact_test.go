@@ -325,3 +325,48 @@ func TestAWSSecretRedactsTheWholeValue(t *testing.T) {
 		t.Errorf("39 characters: counts = %v", r.Counts())
 	}
 }
+
+// aws_secret takes 40 characters, so a token glued to the end of the secret is
+// still there for its own rule; the rest of a longer value goes after every
+// rule has run, without being counted again.
+func TestAWSSecretLeavesAGluedTokenToItsRule(t *testing.T) {
+	tests := []struct{ glued, secret, kind string }{
+		{"/" + jwt, jwt, KindJWT},
+		{"=postgres://admin:S3cr3tPassw0rd@db.local/x", "S3cr3tPassw0rd", KindURLCredentials},
+		{"+" + slackTok, slackTok, KindSlackToken},
+		{"Authorization: Bearer abcdef1234567890", "abcdef1234567890", KindBearer},
+	}
+	for _, tt := range tests {
+		in := "aws_secret_access_key=" + awsSec + tt.glued
+		for name, run := range map[string]func(*Redactor) string{
+			"Text":      func(r *Redactor) string { return r.Text(in) },
+			"Bytes":     func(r *Redactor) string { return string(r.Bytes([]byte(in + "\n"))) },
+			"FileBytes": func(r *Redactor) string { return string(r.FileBytes([]byte(in + "\n"))) },
+		} {
+			r := New0()
+			got := run(r)
+			if strings.Contains(got, tt.secret) || strings.Contains(got, awsSec[30:]) ||
+				r.Counts()[KindAWSSecret] != 1 || r.Counts()[tt.kind] != 1 {
+				t.Errorf("%s(%q) = %q, counts %v", name, in, got, r.Counts())
+			}
+		}
+	}
+}
+
+// A multi-line PEM block redacted right after an assignment value is not an
+// index into it: the value is still a secret.
+func TestFileBytesRedactsAValueGluedToAPEMBlock(t *testing.T) {
+	in := "PASSWORD=Hunter2abc9xyz" + pem + "\nnext\n"
+	r := New0()
+	got := string(r.FileBytes([]byte(in)))
+	if want := "PASSWORD=[REDACTED:secret_assignment][REDACTED:private_key]\n\n\n\nnext\n"; got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+	if r.Counts()[KindSecretAssignment] != 1 || r.Counts()[KindPrivateKey] != 1 {
+		t.Errorf("counts = %v", r.Counts())
+	}
+	// A real index is still code.
+	if got := New0().Text("token = secretsTable[REDACTED_INDEX]"); got != "token = secretsTable[REDACTED_INDEX]" {
+		t.Errorf("index: got %q", got)
+	}
+}

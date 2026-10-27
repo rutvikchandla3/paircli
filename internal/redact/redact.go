@@ -57,11 +57,20 @@ const minEnvValue = 12
 // and the file would no longer parse.
 const sep = `(?:\\?["'])?\s*(?::=|=>|[:=])\s*(?:\\?["'])?`
 
-// lead is the boundary in front of a token. Besides a word boundary it accepts
-// a JSON-escaped newline, tab or carriage return, because in a raw transcript
-// line a token that starts a line follows the two characters `\n`, which have
-// no word boundary between them and the token.
-const lead = `(?:\\[nrt]|\b)`
+// lead is the boundary in front of a token: a word boundary, or one of the
+// things that put a word character right before a token in text that still
+// holds an escape, where no word boundary does:
+//
+//   - a JSON-escaped newline, tab or carriage return: in a raw transcript line
+//     a token that starts a line follows the two characters `\n`;
+//   - a JSON-escaped <, > or &, `\u003c` `\u003e` `\u0026`: encoding/json
+//     writes them so, in a raw line and in JSON nested inside a JSON string,
+//     which stays escaped after one decode;
+//   - an ANSI colour code, `\u001b[0m` escaped or ESC[0m itself: terminal
+//     output in a tool result ends on an `m` right before what it printed.
+//
+// lead is never part of the replaced group, so an escape stays whole.
+const lead = `(?:\\[nrt]|\\u00(?:3[cCeE]|26)|\\u001[bB]\[[0-9;]*m|\x1b\[[0-9;]*m|\b)`
 
 // rule is one pattern. The submatch group is replaced (0 = the whole match);
 // keep, when set, decides whether a match is really a secret. hints are
@@ -111,7 +120,7 @@ var rules = []rule{
 	},
 	{
 		kind:  KindAWSSecret,
-		re:    regexp.MustCompile(`(?i)` + lead + `aws_?secret_?(?:access_?)?key` + sep + `([A-Za-z0-9/+=]{40,})`),
+		re:    regexp.MustCompile(`(?i)` + lead + `aws_?secret_?(?:access_?)?key` + sep + `([A-Za-z0-9/+=]{40})`),
 		group: 1,
 		hints: []string{"secret"},
 	},
@@ -170,7 +179,7 @@ func keepAssigned(value, rest string) bool {
 	if isPlaceholder(value) || isPathOrURL(value) || isBooleanish(value) {
 		return false
 	}
-	if rest != "" && (rest[0] == '(' || rest[0] == '[') {
+	if rest != "" && (rest[0] == '(' || rest[0] == '[') && !strings.HasPrefix(rest, "[REDACTED:") {
 		return false // a call or an index: code, not a literal
 	}
 	return !allLetters.MatchString(value) && !allDigits.MatchString(value) && !dotted.MatchString(value)
@@ -361,7 +370,22 @@ func (r *Redactor) scrub(s string) string {
 	for i := range rules {
 		s, lower = r.apply(&rules[i], s, lower, false)
 	}
-	return r.scrubLiterals(s, false)
+	return r.scrubLiterals(awsTail(s), false)
+}
+
+// awsSecretTail is the rest of a value aws_secret cut at 40 characters.
+var awsSecretTail = regexp.MustCompile(`\[REDACTED:aws_secret\][A-Za-z0-9/+=]+`)
+
+// awsTail removes what follows an aws_secret marker in the value it came from.
+// The rule takes exactly 40 characters, so that a token glued to the secret
+// (`/eyJ...`, `+xoxb-...`) is still there for its own rule to find; whatever of
+// a longer value is left once every rule has run goes here. It counts nothing:
+// it finishes a match the rule already counted.
+func awsTail(s string) string {
+	if !strings.Contains(s, "[REDACTED:aws_secret]") {
+		return s
+	}
+	return awsSecretTail.ReplaceAllLiteralString(s, marker(KindAWSSecret))
 }
 
 // scrubFile is scrub for a whole file: a rule marked multiline runs over the
@@ -388,7 +412,7 @@ func (r *Redactor) scrubFile(s string, keepLines bool) string {
 			s, lower = out, strings.ToLower(out)
 		}
 	}
-	return r.scrubLiterals(s, keepLines)
+	return r.scrubLiterals(awsTail(s), keepLines)
 }
 
 // applyPerLine runs one rule over s one line at a time, the way Bytes does, so

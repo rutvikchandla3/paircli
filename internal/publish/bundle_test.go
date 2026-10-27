@@ -492,8 +492,8 @@ func TestBuildBundleKeepsSnapshotValidJSON(t *testing.T) {
 }
 
 func TestRedactScanFileRefusesToBreakJSON(t *testing.T) {
-	breaks := func(b []byte) []byte { return bytes.ReplaceAll(b, []byte(`"x"`), []byte(`\[REDACTED]`)) }
-	keeps := func(b []byte) []byte { return bytes.ReplaceAll(b, []byte(`"x"`), []byte(`"[REDACTED]"`)) }
+	breaks := func(b []byte) ([]byte, error) { return bytes.ReplaceAll(b, []byte(`"x"`), []byte(`\[REDACTED]`)), nil }
+	keeps := func(b []byte) ([]byte, error) { return bytes.ReplaceAll(b, []byte(`"x"`), []byte(`"[REDACTED]"`)), nil }
 	in := []byte(`{"a":"x","b":"x"}`)
 
 	if _, err := redactScanFile("snapshot.json", in, breaks); err == nil || !strings.Contains(err.Error(), "snapshot.json") {
@@ -509,15 +509,41 @@ func TestRedactScanFileRefusesToBreakJSON(t *testing.T) {
 	if _, err := redactScanFile("signals.json", []byte(`not json "x"`), breaks); err != nil {
 		t.Errorf("already-invalid input: %v", err)
 	}
-	// The pass the bundle really uses for a JSON file keeps it valid.
+	// The pass the bundle really uses for a JSON file redacts it and keeps it
+	// valid, rewriting nothing but the strings that held a secret.
+	secret := []byte(`{"v":"a&` + bundleToken() + `","password":"hunter2hunter2","n":[1,2.50]}`)
+	want := `{"v":"a\u0026[REDACTED:github_token]","password":"[REDACTED:secret_assignment]","n":[1,2.50]}`
 	r := redact.NewWith(nil, "")
-	if out, err := redactScanFile("snapshot.json", in, scanFileRedaction("snapshot.json", r)); err != nil || !bytes.Equal(out, in) {
-		t.Errorf("redact.JSON: out %q err %v", out, err)
+	out, err := redactScanFile("snapshot.json", secret, scanFileRedaction("snapshot.json", r))
+	if err != nil || !json.Valid(out) || string(out) != want {
+		t.Errorf("redact.JSON: out %s err %v, want %s", out, err, want)
+	}
+}
+
+// A secret value that is a JSON number cannot be redacted without changing the
+// file's shape, so the publish stops, naming the file, as it did when redacting
+// the bytes broke the file.
+func TestRedactScanFileRefusesASecretNumber(t *testing.T) {
+	r := redact.NewWith([]string{"NUM_SECRET_KEY=987654321012345"}, "")
+	in := []byte(`{"id": 987654321012345, "other": 12}`)
+	if _, err := redactScanFile("signals.json", in, scanFileRedaction("signals.json", r)); err == nil ||
+		!strings.Contains(err.Error(), "signals.json") || !strings.Contains(err.Error(), "nothing was published") {
+		t.Errorf("err = %v, want a refusal naming signals.json", err)
+	}
+	// As a string it is redacted like any other.
+	out, err := redactScanFile("signals.json", []byte(`{"id": "987654321012345"}`), scanFileRedaction("signals.json", r))
+	if err != nil || string(out) != `{"id": "[REDACTED:env_secret]"}` {
+		t.Errorf("string: out %s err %v", out, err)
+	}
+	opts := buildOptions(t, scanFolder(t, map[string]string{"snapshot.json": string(in)}))
+	opts.Redactor = r
+	if _, err := BuildBundle(opts); err == nil || !strings.Contains(err.Error(), "snapshot.json") {
+		t.Errorf("BuildBundle: err = %v", err)
 	}
 }
 
 // Every JSON scan file is written by encoding/json, which spells < > & as
-// < > &: a token right after one must not survive into the bundle.
+// \u003c \u003e \u0026: a token right after one must not survive into the bundle.
 func TestBuildBundleRedactsTokensAfterHTMLEscapesInEveryJSONFile(t *testing.T) {
 	jsonFiles := []string{"signals.json", "authorship.json", "snapshot.json", "agent-trace.json", "sessions/claude-code-s1.json"}
 	texts := []string{"see <" + bundleToken() + ">", "a&" + bundleToken(), ">" + bundleToken() + "<"}
@@ -569,10 +595,9 @@ func TestBuildBundleRedactsAPEMBlockInTheReports(t *testing.T) {
 	}
 	_, files, _ := readZip(t, b.Path)
 	for _, name := range []string{"report.md", "comment.md"} {
-		got := string(files[".paircli/pr-42/"+testHead+"/"+name])
-		if strings.Contains(got, "b3BlbnNzaC1rZXktdjEAAAAA") || strings.Contains(got, "BEGIN OPENSSH") ||
-			!strings.HasPrefix(got, "# report\n\n```\n[REDACTED:private_key]") {
-			t.Errorf("%s was not redacted: %q", name, got)
+		// FileBytes keeps the newlines the block held.
+		if got := string(files[".paircli/pr-42/"+testHead+"/"+name]); got != "# report\n\n```\n[REDACTED:private_key]\n\n\n\n```\n" {
+			t.Errorf("%s: got %q", name, got)
 		}
 	}
 	if b.Counts["private_key"] != 2 {

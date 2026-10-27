@@ -157,7 +157,10 @@ itself rather than its JSON escapes (`<`, `>` and `&` are written `\u003c`,
 value is redacted together with its key, so `"password": "..."` is still an
 assignment. Only the strings that change are rewritten; everything else in the
 file, key order and numbers included, is uploaded exactly as the scan wrote it.
-A file that does not parse is redacted line by line instead.
+Only string tokens are redacted: a number is never changed, so a number equal to
+one of the secret environment or `.npmrc` values refuses the publish, naming the
+file, rather than upload it. A file that does not parse is redacted line by line
+instead.
 
 Generic assignments redact only values that look like secrets: at least 8
 characters, not a path, URL, boolean, number, placeholder (`$VAR`, `<token>`,

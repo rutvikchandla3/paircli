@@ -177,9 +177,16 @@ func (r *Redactor) FileBytes(b []byte) []byte
 ```
 
 - The replacement for **every** match in this pass is
-  `marker(kind) + strings.Repeat("\n", newlines in the replaced span)`, so line
-  count preservation is unconditional and needs no per-rule flag. The marker
-  lands where the match began and the following lines are left empty.
+  `marker(kind) + strings.Repeat("\n", newlines in the replaced span)`, so the
+  newline count is preserved unconditionally and needs no per-rule flag. The
+  marker lands where the match began and the lines it covered are left empty.
+- **What is preserved is the newline count, and the line count only follows
+  from it except at one edge**: a match that runs to the end of a file with no
+  trailing newline re-emits its newlines, so the result ends with one where the
+  input did not and counting the last line the usual way gives one fewer. Every
+  line after the match keeps its number either way, so a reader indexing by
+  line is unaffected; the file's own line count is taken from the input, not
+  from the redacted text.
 - **"The replaced span" is the group, not the whole match.** `apply`
   (`redact.go:341-372`) replaces `s[start:end]` for `m[2*ru.group:2*ru.group+2]`
   and copies `s[last:start]` — the match's prefix — through untouched. Several
@@ -1070,3 +1077,33 @@ finding below was re-verified against the code before being folded in.
   `copied`; the `DiffLine` / `DiffHunk` / `parseHunkHeader` numbering the window
   maths rests on; the `e2eAssertNoSecret` reasoning; the `*bool` config
   argument; and every ai-pipeline claim.
+
+## As built
+
+Two deviations from the plan's letter, both noted in the final report:
+
+- **`FileBytes` preserves the newline count, not `countLines`.** The guard in
+  `filecontent` compares newline counts, and `full_lines` is taken from the
+  original bytes — which is what the diff's line numbers index anyway. Before
+  this, a key file with no trailing newline whose tail was a PEM block was
+  dropped as `line_shift` instead of served. Found by review.
+- **One contents call, not two.** `fetch` asked the contents endpoint for
+  metadata and then again for the body; the same response carries both. Halves
+  the round trips and the rate-limit cost per file on a large PR. Found by
+  review.
+- **`changed-files/` entry names are re-checked where they are read.**
+  `internal/publish` joins a name from the manifest to a path, so it screens it
+  again rather than trusting a file that anything could have written. Found by
+  review.
+- **The per-line cap applies to a side written whole, not only to a cropped one.**
+  The plan put it in the cropping branch. A 900 KB single-line minified bundle
+  is under `max_file_bytes`, so it would have been sent whole — exactly the wall
+  the cap exists to refuse. The cap now tests the longest line of whatever is
+  about to be written.
+- **`Options.HeadSHA` was added.** The manifest's `head_sha` has to be the head
+  `bundle.json` and the scan folder are named after, and GitHub caps its commit
+  list, so a payload with no `headRefOid` carries the head only as its last
+  commit. Reading `pr.HeadSHA` directly made the manifest disagree with the
+  bundle, and made base resolution silently skip every old side. Caught by a
+  test; the field is set by `scan.Run` from the same `headSHA(p)` it already
+  uses.

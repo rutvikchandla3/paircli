@@ -1,7 +1,9 @@
 # Configuration
 
 `.paircli.json` at the repository root; a missing file means defaults. List
-fields are appended to the defaults; non-zero scalar fields replace them.
+fields are appended to the defaults; non-zero scalar fields replace them. A key
+whose default is on is a pointer internally, so "not mentioned" and `false` are
+different things: omit it to keep the default.
 
 | Key | Type | Default |
 |---|---|---|
@@ -23,6 +25,7 @@ fields are appended to the defaults; non-zero scalar fields replace them.
 | `llm.auth_token_env` | env var holding the `http` credential | none |
 | `comment.include_prompts` | bool | `false` |
 | `comment.max_lines` | int | `5` |
+| `publish.changed_file_contents` | bool | `true` |
 
 ### LLM providers
 
@@ -90,11 +93,24 @@ presigned URL Pair issues for your login:
   `authorship.json`, `snapshot.json`, `agent-trace.json` and `sessions/*.json`
   from the scan. `snapshot.json` and the session files carry the normalized
   session timelines: prompts, commands, tool results and file edits.
+- `.paircli/pr-<n>/<head>/changed-files/`: the whole text of every changed file,
+  as `manifest.json` plus one file per side. `new/` is the file at the PR head
+  and `old/` the file at the merge base GitHub diffed against, so a reader can
+  see a changed line inside the function around it. Redacted like everything
+  else, capped at 1 MiB a side and 16 MiB overall, with the parts around a
+  change kept and the rest dropped when a file is larger than that. Files that
+  are not text — images, recordings, archives, compiled output — are never
+  fetched at all, and every file that was left out is recorded in the manifest
+  with a reason. Turn it off per repository with `publish.changed_file_contents`
+  or per run with `publish --no-file-contents`; `scan` takes the same flag.
 - `raw-sessions/`: the Claude Code (main, resumed and subagent files) and
   Codex transcript bytes that are new since the last publication of that PR,
   with a manifest of source offsets and SHA-256s. At most 80 MiB per
   publication; a range that does not fit is skipped with a note in the log,
   and a bundle that would pass 100 MiB leaves the raw sessions out.
+
+`changed-files/manifest.json` is the list for its subtree, the way the list
+above is for the scan folder: a file it does not name is never uploaded.
 
 Files in the scan folder that are not on that list are never uploaded. The
 upload happens only through `paircli publish` (run by hand or started by the
@@ -121,6 +137,13 @@ goes through `internal/redact` (rules version `1`). A match is replaced by
 | `secret_assignment` | the value in `api_key`, `token`, `secret`, `password` or `passwd` assignments (`name = value`, `name: "value"`, JSON, URL query) |
 | `env_secret` | the exact value of this process's environment variables whose names contain `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `AUTH`, `CREDENTIAL` or `COOKIE` |
 | `npm_token` | the `_authToken=` values in `~/.npmrc` |
+
+Source files are redacted as whole buffers rather than line by line, so a rule
+can match across lines — which is what the `private_key` rule needs, since a PEM
+block spans several. A replacement keeps the newlines it removed, so line N of
+the redacted file is line N of the original and a diff's line numbers still
+point at the right code. Raw transcripts keep the stricter line-by-line rule:
+one match can never join two JSONL lines.
 
 Generic assignments redact only values that look like secrets: at least 8
 characters, not a path, URL, boolean, number, placeholder (`$VAR`, `<token>`,

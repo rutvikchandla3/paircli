@@ -112,14 +112,18 @@ uploads. The steps, each written to the PR's publication record
                                                raw_sessions}
    .paircli/pr-<n>/<head>/...                 report.md comment.md signals.json authorship.json snapshot.json
                                                agent-trace.json sessions/*.json (redacted again on the way in)
+   .paircli/pr-<n>/<head>/changed-files/...   manifest.json and one redacted file per side, when the scan
+                                              was asked for them
    raw-sessions/manifest.json                 absent when nothing new was captured
    raw-sessions/<harness>/<session>/<file>    redacted transcript ranges
    ```
 
-   Only those scan files go in: anything else that happens to sit in the scan
-   folder (leftovers of older tooling, model output) stays local. If raw
-   sessions would push the zip over 100 MiB they are left out and the
-   publication still succeeds.
+   Only those scan files go in, and for `changed-files/` only the files its
+   manifest names: anything else that happens to sit in the scan folder
+   (leftovers of older tooling, model output) stays local. If raw sessions
+   would push the zip over 100 MiB they are left out and the publication still
+   succeeds — content is built into the entry list before them, so an oversized
+   transcript can never cost a bundle its code.
 6. **Upload** (`step: upload`, `finalize`). The revision journal
    (`revisions.json`, flock-protected) maps `{server, head, sha256, size}` to a
    revision: the same bundle always gets the same one, a new bundle gets
@@ -147,8 +151,9 @@ uploads. The steps, each written to the PR's publication record
    job succeeds or fails, or `--timeout` (default 20m) passes.
 
 `--dry-run` builds the bundle and prints the plan, bundle path, redaction
-counts and the server it would use; it never logs in, calls the network,
-writes a publication record or moves a cursor. Exit codes: 0 ok, 1 failure,
+counts, the changed-file totals and the server it would use. It never logs in,
+reaches Pair, writes a publication record or moves a cursor — but it does scan,
+so it runs `gh` and `git` on this machine exactly as a real run would. Exit codes: 0 ok, 1 failure,
 2 not logged in. A run also writes its own log to
 `~/.paircli/logs/publish-<owner>__<repo>__<n>.log` (the record's `log`).
 

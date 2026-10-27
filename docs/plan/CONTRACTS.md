@@ -371,6 +371,7 @@ type Options struct {
 	Number          int
 	CWD             string
 	OutDir          string         // default ~/.paircli/scans/<owner>__<repo>/pr-<n>/<head>
+	ChangedFileContents bool       // also write the changed files' whole contents
 	Runner          pr.Runner
 	Config          *config.Config // nil → config.Load(repo root)
 	NoHooks         bool
@@ -409,3 +410,5 @@ entry prefix for these files is still `.paircli/pr-<n>/<head>/`):
 | `authorship.json` | `model.Attribution` | T22 |
 | `sessions/<harness>-<id>.json` | linked `model.Session` with events | T22 |
 | `agent-trace.json` | Agent Trace records | T27 |
+| `changed-files/manifest.json` | what the content pass wrote, one entry per changed file | filecontent |
+| `changed-files/<new\|old>/<repo path>` | one redacted file per side | filecontent |

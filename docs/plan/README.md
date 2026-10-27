@@ -25,7 +25,8 @@ line attribution; `signals.json`, `report.md`, `comment.md`,
   The seam exists: `internal/redact.Text` is a no-op that every renderer and
   every `Evidence.Excerpt` must call. Compensating defaults until redaction
   lands: `comment.md` omits prompt text unless `comment.include_prompts` is
-  true; the LLM pass is off unless configured; `.paircli/` stays gitignored.
+  true; the LLM pass is off unless configured; scan output stays outside the
+  repository, under `~/.paircli/scans/`.
   EXP-4 (secret *contact* detection) is in scope; it reports masked matches.
 - Any UI beyond Markdown/JSON files and one PR comment.
 - Harnesses other than Claude Code, Codex CLI and Pi.
@@ -46,7 +47,7 @@ paircli scan <pr>   →   scan.Run (internal/scan)                              
   7  engine.NewContext + engine.Run → []model.Signal (27 deterministic detectors)   T02 T11–T19
   8  (--llm) judge.Run → ctx.Judgments; engine.RunIDs(DEC-3, CON-1, CON-3);
      enrich.Apply(ctx, signals)                                                     T23 T26
-  9  render.BuildReport + render.Write → .paircli/pr-<n>/…                          T22
+  9  render.BuildReport + render.Write → ~/.paircli/scans/<owner>__<repo>/pr-<n>/…  T22
  10  (--post) upsert one PR comment via gh                                          T24
 
 paircli hook <harness> <Event>   (invoked by Claude Code / Codex hooks)            T08 T20

@@ -63,7 +63,10 @@ it for that run only. Run `paircli --help` for the full flag list (including
 
 **What is written where.**
 
-- `.paircli/pr-<n>/<head-commit>/` inside the repo — the scan artifacts (gitignored).
+- `~/.paircli/scans/<owner>__<repo>/pr-<n>/<head-commit>/` — the scan
+  artifacts (0700). Off-repo on purpose, so a `git add .` in the checkout can
+  never commit them; `--out` overrides the location. Output an earlier paircli
+  wrote to `<repo>/.paircli/` is left where it is.
 - `~/.paircli/events/<harness>/<date>.jsonl` — hook event records.
 - Hook install edits the harness's own config: `~/.claude/settings.json`,
   `$CODEX_HOME/hooks.json` (never `config.toml`), and

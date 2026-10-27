@@ -8,4 +8,4 @@
 - ▲ **Quality-gate bypasses:** Quality-gate bypasses: 1 CI config change. `VER-5`
 - ▲ **Human corrections:** 1 human correction (1 interrupt); 1 touched PR line. `DEC-1`
 
-<sub>Full report: `{root}/out/pr-482/report.md`. Signals describe the change, not the author.</sub>
+<sub>Signals describe the change, not the author.</sub>

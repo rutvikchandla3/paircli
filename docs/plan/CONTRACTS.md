@@ -314,7 +314,7 @@ type BuildInput struct {
 func BuildReport(in BuildInput) *model.Report
 
 type Options struct {
-	OutDir          string // .paircli/pr-<n>
+	OutDir          string // where the report files are written
 	IncludePrompts  bool
 	MaxCommentLines int
 }
@@ -370,7 +370,7 @@ type Options struct {
 	Repo            string
 	Number          int
 	CWD             string
-	OutDir          string         // default <repo root or CWD>/.paircli/pr-<n>
+	OutDir          string         // default ~/.paircli/scans/<owner>__<repo>/pr-<n>/<head>
 	Runner          pr.Runner
 	Config          *config.Config // nil → config.Load(repo root)
 	NoHooks         bool
@@ -398,7 +398,8 @@ func Write(dir string, pr *model.PR, attr *model.Attribution, sessions []*model.
 
 ## 3. Output files
 
-`.paircli/pr-<n>/` (gitignored):
+`~/.paircli/scans/<owner>__<repo>/pr-<n>/<head>/` (outside the repository, 0700; the zip
+entry prefix for these files is still `.paircli/pr-<n>/<head>/`):
 
 | File | Content | Writer |
 |---|---|---|

@@ -84,8 +84,12 @@ func runScan(args []string) error {
 	if err != nil {
 		return err
 	}
+	root := scan.RepoRoot(cwd, repo)
+	// A diagnostic about where the working directory's scan output went, so it
+	// goes to stderr and never into the JSON a --json run prints.
+	printLegacyScanNote(os.Stderr, cwd, root)
 
-	cfg, err := config.Load(scan.RepoRoot(cwd, repo))
+	cfg, err := config.Load(root)
 	if err != nil {
 		return err
 	}

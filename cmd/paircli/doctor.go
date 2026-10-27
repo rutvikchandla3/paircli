@@ -18,6 +18,7 @@ import (
 	"github.com/rutvikchandla3/paircli/internal/model"
 	"github.com/rutvikchandla3/paircli/internal/pi"
 	"github.com/rutvikchandla3/paircli/internal/scan"
+	"github.com/rutvikchandla3/paircli/internal/state"
 )
 
 // doctorRun and doctorLookPath are the only ways doctor touches the outside
@@ -69,9 +70,25 @@ func doctorReport(w io.Writer, now time.Time) error {
 
 	fmt.Fprintf(w, "\n%-8s %s\n", "gh", doctorGh())
 	fmt.Fprintf(w, "%-8s %s\n", "config", doctorConfigPath(root))
+	fmt.Fprintf(w, "%-8s %s\n", "scan", doctorScanDir(cwd))
 	fmt.Fprintf(w, "%-8s %s\n", "llm", doctorLLM(cfg))
 	fmt.Fprintf(w, "%-8s %s\n", "pair", doctorPair())
 	return nil
+}
+
+// doctorScanDir reports where scans write, and flags scan output an earlier
+// paircli left in the working directory. It looks in cwd rather than at the
+// resolved repository root, which is "" for a checkout whose origin remote does
+// not match — the case a stale folder is most likely to come from.
+func doctorScanDir(cwd string) string {
+	where := engine.Home(state.ScanRoot())
+	if where == "" {
+		where = "unknown (no home directory)"
+	}
+	if legacy := state.LegacyScanDir(cwd); legacy != "" {
+		return fmt.Sprintf("%s, legacy output in %s", where, engine.Home(legacy))
+	}
+	return where
 }
 
 func doctorClaudeCode(cfg *config.Config, since time.Time, hookDir string) doctorRow {

@@ -38,9 +38,10 @@ With the hooks installed, a successful `gh pr create` or a `git push` on a
 branch with an open PR starts `paircli publish` in the background. See
 [docs/SETUP.md](docs/SETUP.md).
 
-Output goes to `.paircli/pr-482/<head-commit>/`. Start with `report.md`;
-`comment.md` is the PR comment and `signals.json` is the full machine-readable
-result.
+Output goes to `~/.paircli/scans/<owner>__<repo>/pr-482/<head-commit>/`
+(`--out` overrides it) — never into the repository, so a `git add .` cannot
+commit it. Start with `report.md`; `comment.md` is the PR comment and
+`signals.json` is the full machine-readable result.
 
 ## Signals
 

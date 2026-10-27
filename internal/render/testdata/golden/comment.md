@@ -5,4 +5,4 @@
 - ▲ **Verification freshness:** 2 PR hunks were edited after the last passing test run (14:02 UTC). `VER-2`
 - ▲ **Test integrity:** 1 test file was modified in the same session as the change it guards. `VER-4`
 
-<sub>Full report: `.paircli/pr-482/report.md`. Signals describe the change, not the author.</sub>
+<sub>Signals describe the change, not the author.</sub>

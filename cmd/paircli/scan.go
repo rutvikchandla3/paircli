@@ -27,6 +27,7 @@ type scanArgs struct {
 	NoCommitPatches bool
 	NoAgentTrace    bool
 	Snapshot        bool
+	NoFileContents  bool
 	WindowBefore    time.Duration
 	WindowAfter     time.Duration
 	JSON            bool
@@ -56,6 +57,7 @@ func parseScanArgs(args []string) (scanArgs, error) {
 	fs.BoolVar(&a.NoCommitPatches, "no-commit-patches", false, "skip per-commit patches")
 	fs.BoolVar(&a.NoAgentTrace, "no-agent-trace", false, "skip agent-trace.json")
 	fs.BoolVar(&a.Snapshot, "snapshot", false, "also write snapshot.json, a full replay record")
+	fs.BoolVar(&a.NoFileContents, "no-file-contents", false, "do not write the changed files' contents")
 	fs.DurationVar(&a.WindowBefore, "window-before", 0, "session search window before the first commit")
 	fs.DurationVar(&a.WindowAfter, "window-after", 0, "session search window after the last commit")
 	fs.BoolVar(&a.JSON, "json", false, "print signals.json to stdout")
@@ -111,20 +113,21 @@ func runScan(args []string) error {
 	}
 
 	res, err := scan.Run(context.Background(), scan.Options{
-		Repo:            repo,
-		Number:          number,
-		CWD:             cwd,
-		OutDir:          a.Out,
-		Runner:          pr.GH{},
-		Config:          cfg,
-		NoHooks:         a.NoHooks,
-		NoCommitPatches: a.NoCommitPatches,
-		NoAgentTrace:    a.NoAgentTrace,
-		Snapshot:        a.Snapshot,
-		Post:            a.Post,
-		IncludePrompts:  a.IncludePrompts,
-		LLM:             provider,
-		Version:         version,
+		Repo:                repo,
+		Number:              number,
+		CWD:                 cwd,
+		OutDir:              a.Out,
+		Runner:              pr.GH{},
+		Config:              cfg,
+		NoHooks:             a.NoHooks,
+		NoCommitPatches:     a.NoCommitPatches,
+		NoAgentTrace:        a.NoAgentTrace,
+		Snapshot:            a.Snapshot,
+		ChangedFileContents: cfg.ChangedFileContents() && !a.NoFileContents,
+		Post:                a.Post,
+		IncludePrompts:      a.IncludePrompts,
+		LLM:                 provider,
+		Version:             version,
 	})
 	if err != nil {
 		return err

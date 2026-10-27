@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/rutvikchandla3/paircli/internal/capture"
+	"github.com/rutvikchandla3/paircli/internal/filecontent"
 	"github.com/rutvikchandla3/paircli/internal/redact"
 )
 
@@ -42,6 +43,11 @@ type BundleOptions struct {
 	Version       string
 	Now           time.Time // zero = time.Now()
 	OutDir        string    // where <head>.zip is written
+
+	// ChangedFiles includes the changed-files/ subtree the scan wrote. It gates
+	// on the same option the scan ran with, so a subtree left behind by an
+	// earlier run is never uploaded by a run that turned the feature off.
+	ChangedFiles bool
 }
 
 // Bundle is a built bundle on disk.
@@ -140,10 +146,72 @@ func readScanFiles(o BundleOptions) ([]entry, map[string]int, error) {
 		}
 		out = append(out, entry{name: path.Join(scanRoot, name), data: redactor.Bytes(data)})
 	}
+	if o.ChangedFiles {
+		contents, err := readChangedFiles(o, scanRoot, redactor)
+		if err != nil {
+			return nil, nil, err
+		}
+		out = append(out, contents...)
+	}
 	if len(out) == 0 {
 		return nil, nil, fmt.Errorf("scan folder %s has no report files", o.ScanDir)
 	}
 	return out, redactor.Counts(), nil
+}
+
+// readChangedFiles reads the changed-files manifest and exactly the files it
+// names, and nothing else the subtree may hold.
+//
+// The manifest is the list, the way scanFiles is the list for the scan folder:
+// anything else that happens to sit under changed-files/ stays local.
+func readChangedFiles(o BundleOptions, scanRoot string, redactor *redact.Redactor) ([]entry, error) {
+	dir := filepath.Join(o.ScanDir, filecontent.DirName)
+	raw, err := os.ReadFile(filepath.Join(dir, filecontent.ManifestName))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			// The scan was asked for contents and wrote no manifest, so
+			// something removed it. Failing is the point: the alternative is a
+			// bundle that silently carries no content.
+			return nil, fmt.Errorf("scan output %s has no %s/%s", o.ScanDir, filecontent.DirName, filecontent.ManifestName)
+		}
+		return nil, err
+	}
+	var m filecontent.Manifest
+	if err := json.Unmarshal(raw, &m); err != nil {
+		return nil, fmt.Errorf("parsing %s/%s: %w", filecontent.DirName, filecontent.ManifestName, err)
+	}
+	var out []entry
+	// The manifest goes in with the files it names: a consumer with only the
+	// paths would have to guess at the sides and the skips.
+	out = append(out, entry{
+		name: path.Join(scanRoot, filecontent.DirName, filecontent.ManifestName),
+		data: redactor.Bytes(raw),
+	})
+	for _, f := range m.Files {
+		for _, side := range []string{filecontent.SideNew, filecontent.SideOld} {
+			s, ok := f.Sides[side]
+			if !ok {
+				continue
+			}
+			// The manifest is a file on disk, so its names are checked again
+			// here rather than trusted: joining an unchecked one to the scan
+			// folder would read any path on the machine.
+			if filecontent.UnsafeName(s.File) != "" {
+				return nil, fmt.Errorf("changed file %q named by the manifest is not a usable path", s.File)
+			}
+			name := path.Join(filecontent.DirName, s.File)
+			full := filepath.Join(o.ScanDir, filepath.FromSlash(name))
+			data, err := os.ReadFile(full)
+			if err != nil {
+				// Unlike an optional scan file, a file the manifest names is
+				// promised by it: skipping it would leave the manifest
+				// describing a zip that does not match.
+				return nil, fmt.Errorf("changed file %s named by the manifest is unreadable: %w", name, err)
+			}
+			out = append(out, entry{name: path.Join(scanRoot, name), data: redactor.Bytes(data)})
+		}
+	}
+	return out, nil
 }
 
 func writeBundle(o BundleOptions, files []entry, fileCounts map[string]int, withRaw bool) (*Bundle, error) {

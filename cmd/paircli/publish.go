@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"github.com/rutvikchandla3/paircli/internal/capture"
+	"github.com/rutvikchandla3/paircli/internal/config"
+	"github.com/rutvikchandla3/paircli/internal/filecontent"
 	"github.com/rutvikchandla3/paircli/internal/notify"
 	"github.com/rutvikchandla3/paircli/internal/pr"
 	"github.com/rutvikchandla3/paircli/internal/prcomment"
@@ -59,6 +61,10 @@ type publishArgs struct {
 	DryRun    bool
 	NoComment bool
 	JSON      bool
+
+	// NoFileContents turns off the whole-file contents a bundle normally
+	// carries. The config key is the per-repo switch; this is the one-off.
+	NoFileContents bool
 }
 
 // parsePublishArgs parses `publish <pr-number-or-url> [flags]`: the PR
@@ -81,6 +87,7 @@ func parsePublishArgs(args []string) (publishArgs, error) {
 	fs.BoolVar(&a.DryRun, "dry-run", false, "build the bundle and print the plan; change nothing remote")
 	fs.BoolVar(&a.NoComment, "no-comment", false, "do not post the Pair link comment on the PR")
 	fs.BoolVar(&a.JSON, "json", false, "print the result as JSON on stdout")
+	fs.BoolVar(&a.NoFileContents, "no-file-contents", false, "do not upload the changed files' contents")
 	if err := fs.Parse(args[1:]); err != nil {
 		return a, err
 	}
@@ -376,13 +383,23 @@ func (p *publisher) run(ctx context.Context) error {
 
 	p.step(state.StepScan)
 	redact.Default().ResetCounts()
+	// Loaded here rather than left to scan.Run because the bundle's contents
+	// depend on it too, and the two must agree: a subtree the scan wrote is
+	// only uploaded when the same option asked for it.
+	cfg, err := config.Load(scan.RepoRoot(p.dir, p.owner+"/"+p.repo))
+	if err != nil {
+		return p.fail(err)
+	}
+	withContents := cfg.ChangedFileContents() && !p.args.NoFileContents
 	res, err := scan.Run(ctx, scan.Options{
-		Repo:     p.owner + "/" + p.repo,
-		Number:   p.number,
-		CWD:      p.dir,
-		Runner:   p.env.runner,
-		Snapshot: true,
-		Version:  version,
+		Repo:                p.owner + "/" + p.repo,
+		Number:              p.number,
+		CWD:                 p.dir,
+		Runner:              p.env.runner,
+		Config:              cfg,
+		Snapshot:            true,
+		ChangedFileContents: withContents,
+		Version:             version,
 	})
 	if err != nil {
 		return p.fail(err)
@@ -431,6 +448,7 @@ func (p *publisher) run(ctx context.Context) error {
 		Version:       version,
 		Now:           p.env.now(),
 		OutDir:        outDir,
+		ChangedFiles:  withContents,
 	})
 	if err != nil {
 		return p.fail(err)
@@ -621,20 +639,22 @@ type publishSummary struct {
 }
 
 type bundleSummary struct {
-	Path        string         `json:"path"`
-	SizeBytes   int64          `json:"size_bytes"`
-	SHA256      string         `json:"sha256"`
-	Entries     int            `json:"entries"`
-	RawFiles    int            `json:"raw_files"`
-	RawIncluded bool           `json:"raw_included"`
-	Redactions  map[string]int `json:"redactions"`
-	Notes       []string       `json:"notes,omitempty"`
+	Path         string              `json:"path"`
+	SizeBytes    int64               `json:"size_bytes"`
+	SHA256       string              `json:"sha256"`
+	Entries      int                 `json:"entries"`
+	RawFiles     int                 `json:"raw_files"`
+	RawIncluded  bool                `json:"raw_included"`
+	Redactions   map[string]int      `json:"redactions"`
+	Notes        []string            `json:"notes,omitempty"`
+	ChangedFiles *filecontent.Totals `json:"changed_files,omitempty"`
 }
 
-func summarize(b *publish.Bundle, staged *capture.Staged) *bundleSummary {
+func summarize(b *publish.Bundle, staged *capture.Staged, changed *filecontent.Totals) *bundleSummary {
 	s := &bundleSummary{
 		Path: b.Path, SizeBytes: b.Size, SHA256: b.SHA256, Entries: len(b.Entries),
 		RawIncluded: b.RawIncluded, Redactions: b.Counts, Notes: b.Notes,
+		ChangedFiles: changed,
 	}
 	if b.RawIncluded && staged != nil {
 		s.RawFiles = len(staged.Files)
@@ -652,7 +672,7 @@ func (p *publisher) printJSON(s publishSummary) error {
 func (p *publisher) printPlan(server string, res *scan.Result, staged *capture.Staged, bundle *publish.Bundle) error {
 	s := publishSummary{
 		PRURL: p.rec.PRURL, ReviewURL: p.rec.ReviewURL, HeadSHA: p.rec.HeadSHA,
-		State: "dry-run", DryRun: true, Server: server, Bundle: summarize(bundle, staged),
+		State: "dry-run", DryRun: true, Server: server, Bundle: summarize(bundle, staged, res.ChangedFiles),
 	}
 	if p.args.JSON {
 		return p.printJSON(s)
@@ -663,6 +683,10 @@ func (p *publisher) printPlan(server string, res *scan.Result, staged *capture.S
 	fmt.Fprintf(w, "  scan folder: %s\n", res.OutDir)
 	fmt.Fprintf(w, "  bundle:      %s (%d bytes, %d entries, %d raw-session files)\n", bundle.Path, bundle.Size, len(bundle.Entries), s.Bundle.RawFiles)
 	fmt.Fprintf(w, "  redactions:  %s\n", formatCounts(bundle.Counts))
+	if c := s.Bundle.ChangedFiles; c != nil {
+		fmt.Fprintf(w, "  changed:     %d files, %d sides (%d partial, %d skipped), %d bytes\n",
+			c.Files, c.SidesWritten, c.SidesPartial, c.SidesSkipped, c.Bytes)
+	}
 	fmt.Fprintf(w, "  would publish to %s and link %s\n", server, s.ReviewURL)
 	return nil
 }

@@ -367,7 +367,6 @@ func (h *pubHarness) record() state.Publication {
 
 func TestPublishEndToEndWithWait(t *testing.T) {
 	h := newPubHarness(t)
-	mustWrite(t, filepath.Join(h.repoDir, ".pair", "review-policy.yml"), "critical:\n  - path: src/webhooks/**\n")
 	if err := h.run("--wait"); err != nil {
 		t.Fatalf("publish: %v\nstdout:\n%s\nstderr:\n%s", err, h.stdout, h.stderr)
 	}
@@ -389,7 +388,7 @@ func TestPublishEndToEndWithWait(t *testing.T) {
 	files := h.s3.uploadedZip(t)
 	prefix := ".paircli/pr-7/" + pubHead + "/"
 	for _, name := range []string{"bundle.json", prefix + "signals.json", prefix + "snapshot.json", prefix + "report.md",
-		prefix + ".pair/review-policy.yml", "raw-sessions/manifest.json", "raw-sessions/claude-code/s1/s1.jsonl"} {
+		"raw-sessions/manifest.json", "raw-sessions/claude-code/s1/s1.jsonl"} {
 		if _, ok := files[name]; !ok {
 			t.Errorf("bundle is missing %s", name)
 		}

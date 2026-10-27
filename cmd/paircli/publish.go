@@ -283,15 +283,6 @@ func (p *publisher) rerunWanted(key string, runErr error) bool {
 	return true
 }
 
-// repoRoot is the root of the PR's checkout: the git root of the repo
-// directory when it is this PR's repository, else the directory itself.
-func (p *publisher) repoRoot() string {
-	if root := scan.RepoRoot(p.dir, p.owner+"/"+p.repo); root != "" {
-		return root
-	}
-	return p.dir
-}
-
 func (p *publisher) prURL() string {
 	return fmt.Sprintf("https://github.com/%s/%s/pull/%d", p.owner, p.repo, p.number)
 }
@@ -430,7 +421,6 @@ func (p *publisher) run(ctx context.Context) error {
 		Number:        p.number,
 		Head:          res.Head,
 		ScanDir:       res.OutDir,
-		RepoRoot:      p.repoRoot(),
 		Raw:           staged,
 		CaptureCounts: capRedactor.Counts(),
 		ScanCounts:    redact.Default().Counts(),

@@ -112,8 +112,6 @@ uploads. The steps, each written to the PR's publication record
                                                raw_sessions}
    .paircli/pr-<n>/<head>/...                 report.md comment.md signals.json authorship.json snapshot.json
                                                agent-trace.json sessions/*.json (redacted again on the way in)
-   .paircli/pr-<n>/<head>/.pair/review-policy.yml
-                                              the repo's critical-path policy, if it has one (<= 256 KiB)
    raw-sessions/manifest.json                 absent when nothing new was captured
    raw-sessions/<harness>/<session>/<file>    redacted transcript ranges
    ```

@@ -26,14 +26,6 @@ const BundleSchemaVersion = 1
 // local: the client never uploads text a model wrote.
 var scanFiles = []string{"report.md", "comment.md", "signals.json", "authorship.json", "snapshot.json", "agent-trace.json"}
 
-// policyFile is the repository's critical-path policy, relative to the repo
-// root. The worker reads it from the bundle's scan folder, at the same path,
-// to raise explicit risk signals.
-const policyFile = ".pair/review-policy.yml"
-
-// maxPolicyBytes is the largest policy file that is bundled.
-const maxPolicyBytes = 256 * 1024
-
 // zipTime is the modification time of every zip entry.
 var zipTime = time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC)
 
@@ -43,7 +35,6 @@ type BundleOptions struct {
 	Number        int
 	Head          string // 40 lowercase hex
 	ScanDir       string // the scan output folder
-	RepoRoot      string // the PR checkout root, where .pair/review-policy.yml may live; "" = none
 	Raw           *capture.Staged
 	CaptureCounts map[string]int   // redaction counts of the raw capture
 	ScanCounts    map[string]int   // redaction counts of the scan's rendered text
@@ -95,7 +86,7 @@ type entry struct {
 // the 100 MiB upload limit the raw sessions are left out and the bundle
 // retried, so a large transcript can never stop a publication.
 func BuildBundle(o BundleOptions) (*Bundle, error) {
-	files, fileCounts, notes, err := readScanFiles(o)
+	files, fileCounts, err := readScanFiles(o)
 	if err != nil {
 		return nil, err
 	}
@@ -107,16 +98,13 @@ func BuildBundle(o BundleOptions) (*Bundle, error) {
 			b.Notes = append(b.Notes, "raw sessions left out: the bundle would exceed 100 MiB with them")
 		}
 	}
-	if b != nil {
-		b.Notes = append(notes, b.Notes...)
-	}
 	return b, err
 }
 
 var errTooLarge = errors.New("bundle exceeds the 100 MiB upload limit")
 
 // readScanFiles reads and redacts the uploadable files of the scan folder.
-func readScanFiles(o BundleOptions) ([]entry, map[string]int, []string, error) {
+func readScanFiles(o BundleOptions) ([]entry, map[string]int, error) {
 	redactor := o.Redactor
 	if redactor == nil {
 		redactor = redact.New()
@@ -126,7 +114,7 @@ func readScanFiles(o BundleOptions) ([]entry, map[string]int, []string, error) {
 	names := append([]string(nil), scanFiles...)
 	sessions, err := filepath.Glob(filepath.Join(o.ScanDir, "sessions", "*.json"))
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	sort.Strings(sessions)
 	for _, s := range sessions {
@@ -141,57 +129,21 @@ func readScanFiles(o BundleOptions) ([]entry, map[string]int, []string, error) {
 			continue
 		}
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		if !info.Mode().IsRegular() {
-			return nil, nil, nil, fmt.Errorf("scan output %s is not a regular file", name)
+			return nil, nil, fmt.Errorf("scan output %s is not a regular file", name)
 		}
 		data, err := os.ReadFile(full)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		out = append(out, entry{name: path.Join(scanRoot, name), data: redactor.Bytes(data)})
 	}
 	if len(out) == 0 {
-		return nil, nil, nil, fmt.Errorf("scan folder %s has no report files", o.ScanDir)
+		return nil, nil, fmt.Errorf("scan folder %s has no report files", o.ScanDir)
 	}
-	notes := []string{}
-	if policy, note := readPolicy(o.RepoRoot, redactor); policy != nil {
-		out = append(out, entry{name: path.Join(scanRoot, policyFile), data: policy})
-	} else if note != "" {
-		notes = append(notes, note)
-	}
-	return out, redactor.Counts(), notes, nil
-}
-
-// readPolicy returns the redacted repo policy file, or nil with a note saying
-// why it was left out. A policy that is simply absent leaves no note.
-func readPolicy(repoRoot string, redactor *redact.Redactor) ([]byte, string) {
-	if repoRoot == "" {
-		return nil, ""
-	}
-	full := filepath.Join(repoRoot, filepath.FromSlash(policyFile))
-	for _, p := range []string{filepath.Dir(full), full} {
-		info, err := os.Lstat(p)
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, ""
-		}
-		if err != nil || info.Mode()&os.ModeSymlink != 0 {
-			return nil, policyFile + " left out: it is not a plain file"
-		}
-	}
-	info, err := os.Lstat(full)
-	if err != nil || !info.Mode().IsRegular() {
-		return nil, policyFile + " left out: it is not a plain file"
-	}
-	if info.Size() > maxPolicyBytes {
-		return nil, fmt.Sprintf("%s left out: it is larger than %d KiB", policyFile, maxPolicyBytes/1024)
-	}
-	data, err := os.ReadFile(full)
-	if err != nil {
-		return nil, policyFile + " left out: " + err.Error()
-	}
-	return redactor.Bytes(data), ""
+	return out, redactor.Counts(), nil
 }
 
 func writeBundle(o BundleOptions, files []entry, fileCounts map[string]int, withRaw bool) (*Bundle, error) {

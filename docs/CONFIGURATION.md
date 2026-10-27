@@ -87,19 +87,13 @@ presigned URL Pair issues for your login:
   `authorship.json`, `snapshot.json`, `agent-trace.json` and `sessions/*.json`
   from the scan. `snapshot.json` and the session files carry the normalized
   session timelines: prompts, commands, tool results and file edits.
-- `.paircli/pr-<n>/<head>/.pair/review-policy.yml`: your repository's
-  `.pair/review-policy.yml` (critical-path policy), when the checkout has one
-  that is a regular file of at most 256 KiB. It is copied through the redactor
-  so Pair can raise explicit risk signals from it; a missing file is skipped
-  silently, an oversized or symlinked one is skipped with a line in the log.
 - `raw-sessions/`: the Claude Code (main, resumed and subagent files) and
   Codex transcript bytes that are new since the last publication of that PR,
   with a manifest of source offsets and SHA-256s. At most 80 MiB per
   publication; a range that does not fit is skipped with a note in the log,
   and a bundle that would pass 100 MiB leaves the raw sessions out.
 
-Files in the scan folder that are not on that list are never uploaded, and
-nothing else from your repository is. The
+Files in the scan folder that are not on that list are never uploaded. The
 upload happens only through `paircli publish` (run by hand or started by the
 installed hooks); `--dry-run` shows the bundle without sending it. Publishing
 also posts one comment with the pair.sh link on the PR (skip it with

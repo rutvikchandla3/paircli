@@ -123,6 +123,7 @@ type pubAPI struct {
 	finalizeStatus int
 	analysis       []string
 	heads          []string // head_sha of every reservation, in order
+	be             *beMain  // when set, answers like the Pair backend's main branch
 }
 
 func newPubAPI(t *testing.T) *pubAPI {
@@ -136,6 +137,10 @@ func (a *pubAPI) handle(w http.ResponseWriter, r *http.Request) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.paths = append(a.paths, r.Method+" "+r.URL.Path)
+	if a.be != nil {
+		a.be.handle(w, r)
+		return
+	}
 	reply := func(status int, v any) {
 		w.WriteHeader(status)
 		json.NewEncoder(w).Encode(map[string]any{"data": v})

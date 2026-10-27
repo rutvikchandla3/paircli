@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -552,6 +553,11 @@ func (p *publisher) waitAnalysis(ctx context.Context, client *publish.Client) er
 			return nil
 		case ctx.Err() != nil:
 			return p.timedOut(ctx)
+		case errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound && p.rec.AnalysisJobID == "":
+			// Finalize named no analysis job and the server has no such
+			// route: an older backend that stores the evidence and nothing more.
+			p.logf("the server has no analysis for this publication")
+			return nil
 		case errors.As(err, &apiErr) && apiErr.Transient():
 			p.logf("analysis status unavailable (%v); retrying", err)
 		case err != nil:

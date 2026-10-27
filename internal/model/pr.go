@@ -15,7 +15,20 @@ type PR struct {
 	CreatedAt time.Time  `json:"created_at"`
 	Commits   []Commit   `json:"commits"`
 	Files     []DiffFile `json:"files"` // the PR's combined diff
+
+	// FilesSource says where Files came from. It matters because the two
+	// endpoints disagree about what Binary means: the diff endpoint sets it
+	// from a `Binary files … differ` header, and the files API sets it for any
+	// file whose patch GitHub omitted — including a large text file. Empty
+	// means the source predates this field.
+	FilesSource string `json:"files_source,omitempty"`
 }
+
+// Values of PR.FilesSource.
+const (
+	SourceDiff = "diff" // `gh pr diff`, one combined diff
+	SourceAPI  = "api"  // `gh api repos/…/pulls/…/files`, the too-large fallback
+)
 
 // Commit is one PR commit. Files is its own patch, when fetched.
 type Commit struct {

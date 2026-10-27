@@ -292,6 +292,25 @@ func TestFetch_DiffTooLargeUsesFilesAPI(t *testing.T) {
 	if huge.Path != "fixtures/huge.json" || !huge.Binary || len(huge.Hunks) != 0 {
 		t.Errorf("patchless file = %+v", huge)
 	}
+	// Which endpoint answered decides whether that Binary means anything: here
+	// it means "GitHub sent no patch", not "the file is binary".
+	if got.FilesSource != model.SourceAPI {
+		t.Errorf("FilesSource = %q, want %q", got.FilesSource, model.SourceAPI)
+	}
+}
+
+func TestFetch_FilesSourceIsTheDiffWhenItRenders(t *testing.T) {
+	r := newFakeRunner(t).
+		withFile(prViewKey(), "testdata/pr_view.json").
+		withFile(prDiffKey(), "testdata/pr_diff.txt")
+
+	got, err := Fetch(r, testRepo, 42, false)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if got.FilesSource != model.SourceDiff {
+		t.Errorf("FilesSource = %q, want %q", got.FilesSource, model.SourceDiff)
+	}
 }
 
 func TestFetch_DiffTooLargeFilesAPIError(t *testing.T) {

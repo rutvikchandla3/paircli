@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -151,9 +152,27 @@ type Client struct {
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		http:    &http.Client{},
+		http:    &http.Client{CheckRedirect: refuseRedirect},
 		wait:    contextSleep,
 	}
+}
+
+// refuseRedirect stops a redirect instead of following it. Every call here is
+// a POST, and Go re-sends a POST that got a 301 or 302 as a GET without a body,
+// which a POST-only route answers with a 404 that says nothing about the
+// redirect. The error names the address to use instead.
+func refuseRedirect(next *http.Request, _ []*http.Request) error {
+	return fmt.Errorf("the server redirected to %s; use that address with --server or PAIRCLI_SERVER_URL",
+		originOf(next.URL))
+}
+
+// originOf is u without its path, query or default port.
+func originOf(u *url.URL) string {
+	host := u.Host
+	if u.Port() == "443" && u.Scheme == "https" || u.Port() == "80" && u.Scheme == "http" {
+		host = u.Hostname()
+	}
+	return u.Scheme + "://" + host
 }
 
 // SetWait replaces the client's sleep function. It is the seam tests use to

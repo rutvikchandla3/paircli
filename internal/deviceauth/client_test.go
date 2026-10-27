@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -314,5 +315,41 @@ func TestUserDisplayName(t *testing.T) {
 	}
 	if got := (User{Display: "Ada", Email: "ada@x"}).DisplayName(); got != "Ada" {
 		t.Errorf("display_name wins = %q", got)
+	}
+}
+
+// A redirected POST must fail with the address to use, not be followed as a GET.
+func TestRequestCodeRefusesARedirectAndNamesTheTarget(t *testing.T) {
+	var followed bool
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { followed = true }))
+	defer target.Close()
+	src := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL+r.URL.Path, http.StatusMovedPermanently)
+	}))
+	defer src.Close()
+
+	_, err := NewClient(src.URL).RequestCode(context.Background(), "paircli")
+	if err == nil || !strings.Contains(err.Error(), "redirected to "+target.URL) || !strings.Contains(err.Error(), "--server") {
+		t.Fatalf("err = %v, want one naming %s and --server", err, target.URL)
+	}
+	if followed {
+		t.Error("the redirect was followed")
+	}
+}
+
+func TestOriginOfDropsPathAndDefaultPort(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://www.pair.sh:443/api/v1/auth/device/code": "https://www.pair.sh",
+		"http://localhost:80/x":                           "http://localhost",
+		"https://pair.example:8443/a?b=c":                 "https://pair.example:8443",
+		"https://pair.example/a":                          "https://pair.example",
+	} {
+		u, err := url.Parse(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := originOf(u); got != want {
+			t.Errorf("originOf(%s) = %s, want %s", in, got, want)
+		}
 	}
 }

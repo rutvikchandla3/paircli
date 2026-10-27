@@ -16,8 +16,9 @@ import (
 )
 
 // defaultServerURL is the backend the CLI logs into when neither --server nor
-// PAIRCLI_SERVER_URL names one.
-const defaultServerURL = "https://pair.sh"
+// PAIRCLI_SERVER_URL names one. It is the www host: the apex pair.sh answers
+// every request, API calls included, with a redirect to it.
+const defaultServerURL = "https://www.pair.sh"
 
 // serverURLEnv overrides defaultServerURL, below --server.
 const serverURLEnv = "PAIRCLI_SERVER_URL"

@@ -470,3 +470,43 @@ func TestBuildBundleRejectsATamperedManifestName(t *testing.T) {
 		})
 	}
 }
+
+// The scan's snapshot.json holds source text with JSON escapes next to
+// secret-looking names (`ExecutionToken: \u0026token`). It must still parse
+// after redaction, or the pipeline cannot read the snapshot at all.
+func TestBuildBundleKeepsSnapshotValidJSON(t *testing.T) {
+	snapshot := `{"lines":["models.Job{ExecutionToken: \u0026token, Lease: \u0026live}",` +
+		`"TOKEN=` + bundleToken() + `","x\tapi_key:\tabcdefgh12345678"]}` + "\n"
+	b, err := BuildBundle(buildOptions(t, scanFolder(t, map[string]string{"snapshot.json": snapshot})))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, files, _ := readZip(t, b.Path)
+	got := files[".paircli/pr-42/"+testHead+"/snapshot.json"]
+	if !json.Valid(got) {
+		t.Fatalf("snapshot.json is not valid JSON after redaction: %s", got)
+	}
+	if strings.Contains(string(got), bundleToken()) {
+		t.Errorf("token was not redacted: %s", got)
+	}
+}
+
+func TestRedactScanFileRefusesToBreakJSON(t *testing.T) {
+	breaks := func(b []byte) []byte { return bytes.ReplaceAll(b, []byte(`"x"`), []byte(`\[REDACTED]`)) }
+	keeps := func(b []byte) []byte { return bytes.ReplaceAll(b, []byte(`"x"`), []byte(`"[REDACTED]"`)) }
+	in := []byte(`{"a":"x","b":"x"}`)
+
+	if _, err := redactScanFile("snapshot.json", in, breaks); err == nil || !strings.Contains(err.Error(), "snapshot.json") {
+		t.Errorf("breaking JSON: err = %v, want one naming snapshot.json", err)
+	}
+	if out, err := redactScanFile("snapshot.json", in, keeps); err != nil || !json.Valid(out) {
+		t.Errorf("valid result: out %q err %v", out, err)
+	}
+	// Markdown is not parsed, and a file that was never valid JSON is not the redactor's doing.
+	if _, err := redactScanFile("report.md", in, breaks); err != nil {
+		t.Errorf("report.md: %v", err)
+	}
+	if _, err := redactScanFile("signals.json", []byte(`not json "x"`), breaks); err != nil {
+		t.Errorf("already-invalid input: %v", err)
+	}
+}

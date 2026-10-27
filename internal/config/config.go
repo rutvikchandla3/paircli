@@ -28,6 +28,7 @@ type Config struct {
 	Roots            Roots          `json:"roots"`
 	LLM              LLM            `json:"llm"`
 	Comment          Comment        `json:"comment"`
+	Publish          Publish        `json:"publish"`
 }
 
 // CheckPattern classifies extra commands as checks. Class is one of
@@ -73,6 +74,22 @@ type LLM struct {
 type Comment struct {
 	IncludePrompts bool `json:"include_prompts"` // default false: never put prompt text in a PR comment
 	MaxLines       int  `json:"max_lines"`       // default 5
+}
+
+// Publish configures what `paircli publish` puts in a bundle.
+type Publish struct {
+	// ChangedFileContents ships the whole text of every changed file alongside
+	// the diff's hunks, so a reader can see a change in the context of the
+	// function around it. On by default; a pointer, because Load merges only
+	// non-zero scalars and a plain bool could not express a default of true
+	// without silently reading as false in every file that omits the key.
+	ChangedFileContents *bool `json:"changed_file_contents,omitempty"`
+}
+
+// ChangedFileContents reports whether a bundle may carry changed-file
+// contents: the configured value, or true when nothing says otherwise.
+func (c *Config) ChangedFileContents() bool {
+	return c == nil || c.Publish.ChangedFileContents == nil || *c.Publish.ChangedFileContents
 }
 
 // Duration is a time.Duration that unmarshals from strings like "48h".
@@ -180,6 +197,12 @@ func Load(repoRoot string) (*Config, error) {
 	cfg.Comment.IncludePrompts = user.Comment.IncludePrompts
 	if user.Comment.MaxLines != 0 {
 		cfg.Comment.MaxLines = user.Comment.MaxLines
+	}
+	// A pointer, so "the file does not mention it" (nil) leaves the default and
+	// "false" turns it off. Assigning a plain bool unconditionally, as
+	// IncludePrompts does, only works because its default is false.
+	if user.Publish.ChangedFileContents != nil {
+		cfg.Publish.ChangedFileContents = user.Publish.ChangedFileContents
 	}
 	return cfg, nil
 }

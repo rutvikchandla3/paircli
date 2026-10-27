@@ -43,6 +43,7 @@ type Session struct {
 	RepoRoot       string    `json:"repo_root,omitempty"`
 	RepoRemote     string    `json:"repo_remote,omitempty"` // "owner/repo"
 	Branch         string    `json:"branch,omitempty"`
+	Branches       []string  `json:"branches,omitempty"` // every branch the transcript recorded, first seen first; Branch is the last
 	StartSHA       string    `json:"start_sha,omitempty"`
 	Start          time.Time `json:"start"`
 	End            time.Time `json:"end"`
@@ -53,6 +54,24 @@ type Session struct {
 // Ref returns "<harness>:<id>", the session reference used in evidence,
 // links and citations.
 func (s *Session) Ref() string { return string(s.Harness) + ":" + s.ID }
+
+// OnBranch reports whether the session was ever on branch name. Branch alone
+// is only the last one recorded, which stops matching the moment someone
+// checks out main or a detached HEAD after finishing the work.
+func (s *Session) OnBranch(name string) bool {
+	if name == "" {
+		return false
+	}
+	if s.Branch == name {
+		return true
+	}
+	for _, b := range s.Branches {
+		if b == name {
+			return true
+		}
+	}
+	return false
+}
 
 // EventRef identifies one event across all sessions.
 type EventRef struct {

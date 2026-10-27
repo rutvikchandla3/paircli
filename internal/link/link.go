@@ -93,6 +93,11 @@ func mergeDuplicates(sessions []*model.Session) []*model.Session {
 		k := mergeKey{s.Harness, s.ID}
 		if existing, ok := merged[k]; ok {
 			existing.Events = append(existing.Events, s.Events...)
+			for _, b := range s.Branches {
+				if !existing.OnBranch(b) {
+					existing.Branches = append(existing.Branches, b)
+				}
+			}
 			continue
 		}
 		merged[k] = s

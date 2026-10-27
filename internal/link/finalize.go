@@ -92,7 +92,7 @@ func hasContentAttribution(attr *model.Attribution, ref string) bool {
 // matchesHeuristic reports whether s's branch matches pr's head ref and its
 // window overlaps any PR commit's time.
 func matchesHeuristic(pr *model.PR, s *model.Session) bool {
-	if s.Branch == "" || s.Branch != pr.HeadRef {
+	if !s.OnBranch(pr.HeadRef) {
 		return false
 	}
 	for _, c := range pr.Commits {
@@ -105,12 +105,15 @@ func matchesHeuristic(pr *model.PR, s *model.Session) bool {
 
 // sessionMethod applies the Finalize precedence rules to one candidate
 // session, returning its LinkMethod and whether any method applied.
-func sessionMethod(pr *model.PR, s *model.Session, shaSet map[string]bool, attr *model.Attribution) (model.LinkMethod, bool) {
+func sessionMethod(pr *model.PR, s *model.Session, shaSet map[string]bool, attr *model.Attribution, authored map[string]bool) (model.LinkMethod, bool) {
 	if hasGitHeadAny(s, linkTriggers, shaSet) {
 		return model.LinkSHAExact, true
 	}
 	if (s.StartSHA != "" && shaSet[s.StartSHA]) || hasGitHeadAny(s, ancestorTriggers, shaSet) {
 		return model.LinkSHAAncestor, true
+	}
+	if len(authored) > 0 {
+		return model.LinkAuthored, true
 	}
 	if hasContentAttribution(attr, s.Ref()) {
 		return model.LinkContent, true
@@ -134,9 +137,11 @@ func Finalize(pr *model.PR, cands []*model.Session, attr *model.Attribution,
 	byRef := map[string]*model.Session{}
 	dropped := droppedEarlier
 
+	authored := map[string]map[string]bool{}
 	for _, s := range cands {
 		byRef[s.Ref()] = s
-		method, ok := sessionMethod(pr, s, shaSet, attr)
+		authored[s.Ref()] = authoredCommits(pr, s)
+		method, ok := sessionMethod(pr, s, shaSet, attr, authored[s.Ref()])
 		if !ok {
 			dropped++
 			continue
@@ -171,6 +176,21 @@ func Finalize(pr *model.PR, cands []*model.Session, attr *model.Attribution,
 			continue
 		}
 
+		var authoredRefs []string
+		for ref := range linkedSet {
+			if authored[ref][c.SHA] {
+				authoredRefs = append(authoredRefs, ref)
+			}
+		}
+		if len(authoredRefs) > 0 {
+			sort.Strings(authoredRefs)
+			link.Sessions = authoredRefs
+			link.Method = model.LinkAuthored
+			link.Confidence = "inferred"
+			res.Links = append(res.Links, link)
+			continue
+		}
+
 		if refs, ok := commitSessions[c.SHA]; ok {
 			var filtered []string
 			for _, r := range refs {
@@ -191,7 +211,7 @@ func Finalize(pr *model.PR, cands []*model.Session, attr *model.Attribution,
 		var heurRefs []string
 		for ref := range linkedSet {
 			s := byRef[ref]
-			if s.Branch != "" && s.Branch == pr.HeadRef && heuristicOverlap(s, c.Time) {
+			if s.OnBranch(pr.HeadRef) && heuristicOverlap(s, c.Time) {
 				heurRefs = append(heurRefs, ref)
 			}
 		}

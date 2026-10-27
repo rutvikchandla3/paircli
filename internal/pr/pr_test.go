@@ -56,7 +56,7 @@ func (f *fakeRunner) Run(args ...string) ([]byte, error) {
 const testRepo = "acme/shop"
 
 func prViewKey() string {
-	return fmt.Sprintf("pr view 42 -R %s --json number,url,title,body,headRefName,baseRefName,createdAt,commits", testRepo)
+	return fmt.Sprintf("pr view 42 -R %s --json number,url,title,body,headRefName,headRefOid,baseRefName,createdAt,commits", testRepo)
 }
 
 func prDiffKey() string {
@@ -85,6 +85,10 @@ func TestFetch_Basic(t *testing.T) {
 	}
 	if got.HeadRef != "feature/checkout" || got.BaseRef != "main" {
 		t.Errorf("HeadRef/BaseRef = %q/%q", got.HeadRef, got.BaseRef)
+	}
+	// The head comes from headRefOid (lowercased), not from the last commit.
+	if want := strings.Repeat("d", 40); got.HeadSHA != want {
+		t.Errorf("HeadSHA = %q, want %q", got.HeadSHA, want)
 	}
 	wantCreated := time.Date(2026, 9, 20, 10, 0, 0, 0, time.UTC)
 	if !got.CreatedAt.Equal(wantCreated) {
@@ -172,7 +176,7 @@ func TestFetch_CommitPatches(t *testing.T) {
 func TestFetch_CommitLimit(t *testing.T) {
 	const n = 101
 	var sb strings.Builder
-	sb.WriteString(`{"number":7,"url":"https://github.com/acme/shop/pull/7","title":"t","body":"","headRefName":"h","baseRefName":"main","createdAt":"2026-09-20T10:00:00Z","commits":[`)
+	sb.WriteString(`{"number":7,"url":"https://github.com/acme/shop/pull/7","title":"t","body":"","headRefName":"h","headRefOid":"` + strings.Repeat("f", 40) + `","baseRefName":"main","createdAt":"2026-09-20T10:00:00Z","commits":[`)
 	for i := 0; i < n; i++ {
 		if i > 0 {
 			sb.WriteByte(',')
@@ -183,7 +187,7 @@ func TestFetch_CommitLimit(t *testing.T) {
 	sb.WriteString(`]}`)
 
 	r := newFakeRunner(t)
-	r.responses[fmt.Sprintf("pr view 7 -R %s --json number,url,title,body,headRefName,baseRefName,createdAt,commits", testRepo)] = []byte(sb.String())
+	r.responses[fmt.Sprintf("pr view 7 -R %s --json number,url,title,body,headRefName,headRefOid,baseRefName,createdAt,commits", testRepo)] = []byte(sb.String())
 	r.responses[fmt.Sprintf("pr diff 7 -R %s", testRepo)] = []byte("")
 	for i := 0; i < 100; i++ {
 		sha := fmt.Sprintf("%040d", i)
@@ -211,6 +215,23 @@ func TestFetch_CommitLimit(t *testing.T) {
 	}
 	if got.Commits[100].Files != nil {
 		t.Errorf("commit 100 (101st): Files = %+v, want nil (skipped, no error)", got.Commits[100].Files)
+	}
+	// GitHub caps the commit list, so the head is not necessarily its last entry.
+	if got.HeadSHA != strings.Repeat("f", 40) || got.HeadSHA == got.Commits[len(got.Commits)-1].SHA {
+		t.Errorf("HeadSHA = %q, want headRefOid", got.HeadSHA)
+	}
+}
+
+func TestFetch_NoHeadRefOid(t *testing.T) {
+	r := newFakeRunner(t)
+	r.responses[prViewKey()] = []byte(`{"number":42,"url":"u","title":"t","body":"","headRefName":"h","baseRefName":"main","createdAt":"2026-09-20T10:00:00Z","commits":[]}`)
+	r.responses[prDiffKey()] = []byte("")
+	got, err := Fetch(r, testRepo, 42, false)
+	if err != nil {
+		t.Fatalf("Fetch: %v", err)
+	}
+	if got.HeadSHA != "" {
+		t.Errorf("HeadSHA = %q, want empty when gh sends no headRefOid", got.HeadSHA)
 	}
 }
 
@@ -386,5 +407,24 @@ func TestResolveArg_NotAPRArg(t *testing.T) {
 	_, _, err := ResolveArg(dir, "not-a-number-or-url")
 	if err == nil {
 		t.Fatal("ResolveArg: err = nil, want non-nil")
+	}
+}
+
+func TestHeadSHA(t *testing.T) {
+	key := "pr view 42 -R acme/shop --json headRefOid --jq .headRefOid"
+	r := newFakeRunner(t)
+	r.responses[key] = []byte(strings.ToUpper(strings.Repeat("ab", 20)) + "\n")
+	got, err := HeadSHA(r, testRepo, 42)
+	if err != nil || got != strings.Repeat("ab", 20) {
+		t.Fatalf("HeadSHA = %q, %v", got, err)
+	}
+
+	r.responses[key] = []byte("not-a-sha\n")
+	if _, err := HeadSHA(r, testRepo, 42); err == nil {
+		t.Error("an invalid head was accepted")
+	}
+	r.errs[key] = errors.New("gh failed")
+	if _, err := HeadSHA(r, testRepo, 42); err == nil {
+		t.Error("a gh failure was swallowed")
 	}
 }

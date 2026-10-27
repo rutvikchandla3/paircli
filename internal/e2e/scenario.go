@@ -194,7 +194,7 @@ func (r *fakeRunner) Run(args ...string) ([]byte, error) {
 func (r *fakeRunner) set(args string, body string) { r.responses[args] = []byte(body) }
 
 // e2ePRViewArg is the `gh pr view` argument list internal/pr issues.
-var e2ePRViewArg = fmt.Sprintf("pr view %d -R %s --json number,url,title,body,headRefName,baseRefName,createdAt,commits", e2eNumber, e2eRepo)
+var e2ePRViewArg = fmt.Sprintf("pr view %d -R %s --json number,url,title,body,headRefName,headRefOid,baseRefName,createdAt,commits", e2eNumber, e2eRepo)
 
 // e2ePRDiffArg is the `gh pr diff` argument list internal/pr issues.
 var e2ePRDiffArg = fmt.Sprintf("pr diff %d -R %s", e2eNumber, e2eRepo)

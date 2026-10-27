@@ -13,6 +13,7 @@ import (
 
 	"github.com/rutvikchandla3/paircli/internal/hooklog"
 	"github.com/rutvikchandla3/paircli/internal/model"
+	"github.com/rutvikchandla3/paircli/internal/prtrigger"
 )
 
 // --- shared helpers ---
@@ -737,5 +738,158 @@ func TestRunHookEvent_GarbageStdin(t *testing.T) {
 	}
 	if len(logData) == 0 {
 		t.Error("hook-errors.log is empty, want a logged decode error")
+	}
+}
+
+// --- PR trigger ---
+
+type publishStart struct {
+	pr  prtrigger.PR
+	dir string
+}
+
+// fakePRTrigger swaps the hook's PR runner and stdout for fakes: every branch
+// resolves to branchPR (none when nil) and every start is recorded.
+func fakePRTrigger(t *testing.T, branchPR *prtrigger.PR) (starts *[]publishStart, stdout *bytes.Buffer) {
+	t.Helper()
+	starts, stdout = &[]publishStart{}, &bytes.Buffer{}
+	origRunner, origStdout := prRunner, hookStdout
+	t.Cleanup(func() { prRunner, hookStdout = origRunner, origStdout })
+	prRunner = prtrigger.Runner{
+		Resolve: func(string) (prtrigger.PR, error) {
+			if branchPR == nil {
+				return prtrigger.PR{}, fmt.Errorf("no pull request")
+			}
+			return *branchPR, nil
+		},
+		Start: func(pr prtrigger.PR, dir string) error {
+			*starts = append(*starts, publishStart{pr, dir})
+			return nil
+		},
+	}
+	hookStdout = stdout
+	return starts, stdout
+}
+
+func bashPayload(session, repo, command, stdout string) map[string]interface{} {
+	return map[string]interface{}{
+		"session_id": session, "cwd": repo, "hook_event_name": "PostToolUse",
+		"tool_name": "Bash", "tool_use_id": "tu-pr",
+		"tool_input":    map[string]interface{}{"command": command},
+		"tool_response": map[string]interface{}{"stdout": stdout, "stderr": "", "interrupted": false},
+	}
+}
+
+// decodeOneObject fails unless out holds exactly one JSON object.
+func decodeOneObject(t *testing.T, out *bytes.Buffer) map[string]interface{} {
+	t.Helper()
+	dec := json.NewDecoder(bytes.NewReader(out.Bytes()))
+	var obj map[string]interface{}
+	if err := dec.Decode(&obj); err != nil {
+		t.Fatalf("stdout is not a JSON object: %v (%q)", err, out.String())
+	}
+	if dec.More() {
+		t.Fatalf("stdout holds more than one JSON object: %q", out.String())
+	}
+	return obj
+}
+
+func TestRunHookEvent_PostToolUse_PRCreateStartsPublish(t *testing.T) {
+	dir, repo := setupHookEnv(t)
+	starts, stdout := fakePRTrigger(t, nil)
+	runHookEventJSON(t, "PostToolUse", bashPayload("s-pr", repo, "gh pr create --fill",
+		"Creating pull request\n\nhttps://github.com/Five-SH/awt/pull/12\n"))
+
+	want := publishStart{prtrigger.PR{Owner: "five-sh", Repo: "awt", Number: 12}, repo}
+	if len(*starts) != 1 || (*starts)[0] != want {
+		t.Fatalf("starts = %+v, want [%+v]", *starts, want)
+	}
+	obj := decodeOneObject(t, stdout)
+	const review = "https://pair.sh/five-sh/awt/pull/12"
+	if msg, _ := obj["systemMessage"].(string); !strings.Contains(msg, "Pair review: "+review) {
+		t.Errorf("systemMessage = %v", obj["systemMessage"])
+	}
+	specific, _ := obj["hookSpecificOutput"].(map[string]interface{})
+	if specific["hookEventName"] != "PostToolUse" || !strings.Contains(specific["additionalContext"].(string), review) {
+		t.Errorf("hookSpecificOutput = %v", specific)
+	}
+	if recs := readRecords(t, dir, "s-pr"); len(recs) != 0 {
+		t.Errorf("got %d hook records for gh pr create, want 0: %+v", len(recs), recs)
+	}
+}
+
+func TestRunHookEvent_PostToolUse_PushToPRBranchStartsPublish(t *testing.T) {
+	_, repo := setupHookEnv(t)
+	pr := prtrigger.PR{Owner: "five-sh", Repo: "awt", Number: 12}
+	starts, stdout := fakePRTrigger(t, &pr)
+	runHookEventJSON(t, "PostToolUse", bashPayload("s-push", repo, "git push origin HEAD", "branch updated\n"))
+
+	if len(*starts) != 1 || (*starts)[0] != (publishStart{pr, repo}) {
+		t.Fatalf("starts = %+v, want one start of %+v in %s", *starts, pr, repo)
+	}
+	decodeOneObject(t, stdout)
+}
+
+// A commit-and-push is both a recorded git state change and a publish trigger.
+func TestRunHookEvent_PostToolUse_CommitAndPushRecordsAndPublishes(t *testing.T) {
+	dir, repo := setupHookEnv(t)
+	pr := prtrigger.PR{Owner: "five-sh", Repo: "awt", Number: 12}
+	starts, stdout := fakePRTrigger(t, &pr)
+	runHookEventJSON(t, "PostToolUse", bashPayload("s-both", repo, "git commit -am wip && git push", ""))
+
+	if recs := readRecords(t, dir, "s-both"); len(recs) != 1 || recs[0].Trigger != "commit" {
+		t.Errorf("records = %+v, want one commit record", recs)
+	}
+	if len(*starts) != 1 {
+		t.Errorf("starts = %+v, want one", *starts)
+	}
+	decodeOneObject(t, stdout)
+}
+
+func TestRunHookEvent_PostToolUse_NoTriggerPrintsNothing(t *testing.T) {
+	_, repo := setupHookEnv(t)
+	pr := prtrigger.PR{Owner: "five-sh", Repo: "awt", Number: 12}
+	starts, stdout := fakePRTrigger(t, &pr)
+	failed := bashPayload("s-none", repo, "git push", "")
+	failed["tool_response"] = map[string]interface{}{"stdout": "", "exit_code": 1}
+	for _, payload := range []map[string]interface{}{
+		bashPayload("s-none", repo, "ls -la", ""),
+		bashPayload("s-none", repo, "git commit -am wip", ""),
+		bashPayload("s-none", repo, "git push --tags", ""),
+		failed,
+	} {
+		runHookEventJSON(t, "PostToolUse", payload)
+	}
+	if len(*starts) != 0 || stdout.Len() != 0 {
+		t.Errorf("starts = %+v, stdout = %q, want neither", *starts, stdout.String())
+	}
+}
+
+func TestRunHookEvent_PostToolUse_PushWithoutPRPrintsNothing(t *testing.T) {
+	_, repo := setupHookEnv(t)
+	starts, stdout := fakePRTrigger(t, nil)
+	runHookEventJSON(t, "PostToolUse", bashPayload("s-nopr", repo, "git push", ""))
+	if len(*starts) != 0 || stdout.Len() != 0 {
+		t.Errorf("starts = %+v, stdout = %q, want neither", *starts, stdout.String())
+	}
+}
+
+// A publish that cannot start is logged and never reaches the agent.
+func TestRunHookEvent_PostToolUse_StartFailureIsLoggedNotPrinted(t *testing.T) {
+	_, repo := setupHookEnv(t)
+	_, stdout := fakePRTrigger(t, nil)
+	prRunner.Start = func(prtrigger.PR, string) error { return fmt.Errorf("fork failed") }
+
+	data, _ := json.Marshal(bashPayload("s-fail", repo, "gh pr create --fill", "https://github.com/a/b/pull/1\n"))
+	if err := RunHookEvent("PostToolUse", bytes.NewReader(data)); err != nil {
+		t.Fatalf("RunHookEvent returned an error: %v", err)
+	}
+	if stdout.Len() != 0 {
+		t.Errorf("stdout = %q, want empty", stdout.String())
+	}
+	home, _ := os.UserHomeDir()
+	logData, err := os.ReadFile(filepath.Join(home, ".paircli", "hook-errors.log"))
+	if err != nil || !strings.Contains(string(logData), "fork failed") {
+		t.Errorf("hook-errors.log = %q, %v, want the start failure", logData, err)
 	}
 }

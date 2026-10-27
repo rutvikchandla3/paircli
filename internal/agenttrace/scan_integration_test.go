@@ -40,7 +40,7 @@ index 1111111..2222222 100644
 +return sendWithRetry(url, body)
 `
 	r := stubRunner{responses: map[string][]byte{
-		"pr view 7 -R acme/shop --json number,url,title,body,headRefName,baseRefName,createdAt,commits": []byte(view),
+		"pr view 7 -R acme/shop --json number,url,title,body,headRefName,headRefOid,baseRefName,createdAt,commits": []byte(view),
 		"pr diff 7 -R acme/shop": []byte(diff),
 	}}
 	cfg := config.Default()

@@ -4,6 +4,7 @@
   "title": "Add checkout flow",
   "body": "This adds the checkout flow.",
   "headRefName": "feature/checkout",
+  "headRefOid": "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD",
   "baseRefName": "main",
   "createdAt": "2026-09-20T10:00:00Z",
   "commits": [

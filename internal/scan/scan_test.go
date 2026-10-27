@@ -76,7 +76,7 @@ index 1111111..2222222 100644
 +return sendWithRetry(url, body)
 `
 
-const scanPRArg = "pr view 7 -R acme/shop --json number,url,title,body,headRefName,baseRefName,createdAt,commits"
+const scanPRArg = "pr view 7 -R acme/shop --json number,url,title,body,headRefName,headRefOid,baseRefName,createdAt,commits"
 
 // scanDiffArg is the gh argument list for the combined PR diff.
 const scanDiffArg = "pr diff 7 -R acme/shop"
@@ -277,6 +277,42 @@ func TestRun_DefaultOutDirIncludesHeadCommit(t *testing.T) {
 	want := filepath.Join(repoRoot, ".paircli", "pr-7", "aaaaaaa1")
 	if res.OutDir != want {
 		t.Fatalf("OutDir = %q, want %q", res.OutDir, want)
+	}
+}
+
+// TestRun_OutDirUsesHeadRefOid checks that the output folder is named after
+// headRefOid, not the last entry of the (capped) commit list.
+func TestRun_OutDirUsesHeadRefOid(t *testing.T) {
+	repoRoot := t.TempDir()
+	scanGitRepo(t, repoRoot, "git@github.com:acme/shop.git")
+
+	projects := t.TempDir()
+	scanTranscript(t, projects, repoRoot)
+	head := strings.Repeat("e", 40)
+	r := newScanRunner()
+	r.responses[scanPRArg] = []byte(strings.Replace(scanGHView, `"headRefName": "feat/retry",`,
+		`"headRefName": "feat/retry", "headRefOid": "`+strings.ToUpper(head)+`",`, 1))
+	r.responses[scanDiffArg] = []byte(scanDiff)
+
+	res, err := Run(context.Background(), Options{
+		Repo:            "acme/shop",
+		Number:          7,
+		CWD:             repoRoot,
+		Runner:          r,
+		Config:          scanConfig(t, projects),
+		NoHooks:         true,
+		NoCommitPatches: true,
+		Now:             time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
+		Version:         "0.0.0-test",
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if want := filepath.Join(repoRoot, ".paircli", "pr-7", head); res.OutDir != want {
+		t.Fatalf("OutDir = %q, want %q", res.OutDir, want)
+	}
+	if res.Head != head {
+		t.Errorf("Head = %q, want %q", res.Head, head)
 	}
 }
 

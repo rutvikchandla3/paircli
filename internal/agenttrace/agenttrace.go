@@ -402,9 +402,16 @@ func lastModel(s *model.Session) string {
 	return ""
 }
 
-// headSHA returns the PR head commit SHA: the last commit the scan fetched.
+// headSHA returns the PR head commit SHA: GitHub's headRefOid, or the last
+// commit the scan fetched when the payload carried none.
 func headSHA(pr *model.PR) string {
-	if pr == nil || len(pr.Commits) == 0 {
+	if pr == nil {
+		return ""
+	}
+	if pr.HeadSHA != "" {
+		return pr.HeadSHA
+	}
+	if len(pr.Commits) == 0 {
 		return ""
 	}
 	return pr.Commits[len(pr.Commits)-1].SHA

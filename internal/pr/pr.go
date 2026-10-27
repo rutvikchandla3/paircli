@@ -119,11 +119,11 @@ func Fetch(r Runner, repo string, number int, withCommitPatches bool) (*model.PR
 		prv.Commits = append(prv.Commits, model.Commit{SHA: c.OID, Time: ct, Message: msg})
 	}
 
-	files, err := fetchFiles(r, repo, number)
+	files, source, err := fetchFiles(r, repo, number)
 	if err != nil {
 		return nil, err
 	}
-	prv.Files = files
+	prv.Files, prv.FilesSource = files, source
 
 	if withCommitPatches {
 		n := len(prv.Commits)
@@ -151,27 +151,27 @@ func Fetch(r Runner, repo string, number int, withCommitPatches bool) (*model.PR
 	return prv, nil
 }
 
-// fetchFiles returns the PR's changed files from its combined diff. GitHub
-// refuses to render a combined diff over 20,000 lines (HTTP 406, too_large);
-// for those PRs the files come from the paginated pulls files API instead,
-// one patch per file.
-func fetchFiles(r Runner, repo string, number int) ([]model.DiffFile, error) {
+// fetchFiles returns the PR's changed files from its combined diff, and which
+// of the two endpoints they came from. GitHub refuses to render a combined diff
+// over 20,000 lines (HTTP 406, too_large); for those PRs the files come from
+// the paginated pulls files API instead, one patch per file.
+func fetchFiles(r Runner, repo string, number int) ([]model.DiffFile, string, error) {
 	diffOut, err := r.Run("pr", "diff", strconv.Itoa(number), "-R", repo)
 	if err != nil {
 		if !isDiffTooLarge(err) {
-			return nil, fmt.Errorf("pr: gh pr diff: %w", err)
+			return nil, "", fmt.Errorf("pr: gh pr diff: %w", err)
 		}
 		files, filesErr := fetchFilesFromAPI(r, repo, number)
 		if filesErr != nil {
-			return nil, fmt.Errorf("pr: gh pr diff: %w; falling back to the files API: %w", err, filesErr)
+			return nil, "", fmt.Errorf("pr: gh pr diff: %w; falling back to the files API: %w", err, filesErr)
 		}
-		return files, nil
+		return files, model.SourceAPI, nil
 	}
 	files, err := diff.Parse(string(diffOut))
 	if err != nil {
-		return nil, fmt.Errorf("pr: parsing pr diff: %w", err)
+		return nil, "", fmt.Errorf("pr: parsing pr diff: %w", err)
 	}
-	return files, nil
+	return files, model.SourceDiff, nil
 }
 
 // isDiffTooLarge reports whether gh failed because GitHub would not render

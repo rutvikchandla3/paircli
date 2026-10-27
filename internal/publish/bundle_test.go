@@ -260,3 +260,213 @@ func TestBuildBundleWithoutCaptureHasNoRawSessions(t *testing.T) {
 		}
 	}
 }
+
+// changedManifest is a manifest naming one written side and one skipped one,
+// the shape internal/filecontent produces.
+func changedManifest(t *testing.T, withFile bool) string {
+	t.Helper()
+	files := []map[string]any{{
+		"path":   "src/app.go",
+		"status": "added",
+		"sides":  map[string]any{},
+		"skipped": map[string]any{
+			"new": map[string]any{"reason": "media"},
+		},
+	}}
+	if withFile {
+		files[0]["sides"] = map[string]any{"new": map[string]any{
+			"file": "new/src/app.go", "sha256": strings.Repeat("0", 64), "bytes": 20,
+			"lines": 1, "partial": false, "ranges": [][2]int{}, "full_lines": 1,
+			"full_bytes": 20, "source": "git",
+		}}
+	}
+	m := map[string]any{
+		"schema_version": 1, "tool": "paircli test", "created_at": "2026-10-11T12:00:00Z",
+		"repo": "acme/repo", "pull_number": 42, "head_sha": testHead, "base_sha": "",
+		"base_ref": "main", "base_kind": "",
+		"redaction": map[string]any{"rules_version": "1"},
+		"limits":    map[string]any{},
+		"totals":    map[string]any{"files": 1, "sides_written": 1},
+		"files":     files,
+	}
+	b, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b) + "\n"
+}
+
+// changedScanFolder is a scan folder that also holds the changed-files subtree.
+func changedScanFolder(t *testing.T, extra map[string]string) string {
+	t.Helper()
+	files := map[string]string{
+		"changed-files/manifest.json":  changedManifest(t, true),
+		"changed-files/new/src/app.go": "package app\n\nvar token = \"" + bundleToken() + "\"\n",
+	}
+	for name, content := range extra {
+		files[name] = content
+	}
+	return scanFolder(t, files)
+}
+
+func TestBuildBundleIncludesChangedFiles(t *testing.T) {
+	o := buildOptions(t, changedScanFolder(t, nil))
+	o.ChangedFiles = true
+	b, err := BuildBundle(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, files, _ := readZip(t, b.Path)
+
+	prefix := ".paircli/pr-42/" + testHead + "/changed-files/"
+	manifest, ok := files[prefix+"manifest.json"]
+	if !ok {
+		t.Fatalf("no manifest in the bundle: %v", b.Entries)
+	}
+	if !bytes.Contains(manifest, []byte(`"reason": "media"`)) {
+		t.Errorf("manifest = %s", manifest)
+	}
+	body, ok := files[prefix+"new/src/app.go"]
+	if !ok {
+		t.Fatalf("no content in the bundle: %v", b.Entries)
+	}
+	// Content is redacted on the way in, like every other scan file.
+	if bytes.Contains(body, []byte(bundleToken())) {
+		t.Errorf("the content was not redacted: %s", body)
+	}
+	if !bytes.Contains(body, []byte("[REDACTED:github_token]")) {
+		t.Errorf("content = %s", body)
+	}
+	// The entry list stays sorted.
+	names := b.Entries
+	if !sort.StringsAreSorted(names) {
+		t.Errorf("entries are not sorted: %v", names)
+	}
+	// The content's redactions are part of the bundle's summary.
+	if b.Counts["github_token"] < 1 {
+		t.Errorf("counts = %v, want the content's redaction counted", b.Counts)
+	}
+}
+
+func TestBuildBundleWithoutTheOptionLeavesChangedFilesOut(t *testing.T) {
+	// The subtree is there, the option says no: nothing from it is uploaded.
+	o := buildOptions(t, changedScanFolder(t, nil))
+	b, err := BuildBundle(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range b.Entries {
+		if strings.Contains(name, "changed-files") {
+			t.Errorf("bundle contains %s", name)
+		}
+	}
+}
+
+func TestBuildBundleOnlyUploadsWhatTheManifestNames(t *testing.T) {
+	dir := changedScanFolder(t, map[string]string{
+		"changed-files/new/src/unlisted.go": "model-written\n",
+		"changed-files/notes.txt":           "not named anywhere\n",
+		"changed-files/old/src/also-not.go": "not named anywhere\n",
+	})
+	o := buildOptions(t, dir)
+	o.ChangedFiles = true
+	b, err := BuildBundle(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range b.Entries {
+		for _, banned := range []string{"unlisted.go", "notes.txt", "also-not.go"} {
+			if strings.Contains(name, banned) {
+				t.Errorf("bundle contains %s", name)
+			}
+		}
+	}
+}
+
+func TestBuildBundleRejectsAMissingOrBrokenManifest(t *testing.T) {
+	t.Run("missing", func(t *testing.T) {
+		o := buildOptions(t, scanFolder(t, nil))
+		o.ChangedFiles = true
+		if _, err := BuildBundle(o); err == nil {
+			t.Error("a scan asked for contents and has no manifest, and the bundle was built anyway")
+		}
+	})
+	t.Run("malformed", func(t *testing.T) {
+		o := buildOptions(t, scanFolder(t, map[string]string{"changed-files/manifest.json": "{not json"}))
+		o.ChangedFiles = true
+		if _, err := BuildBundle(o); err == nil {
+			t.Error("a malformed manifest was accepted")
+		}
+	})
+	t.Run("a named file that is absent", func(t *testing.T) {
+		o := buildOptions(t, scanFolder(t, map[string]string{
+			"changed-files/manifest.json": changedManifest(t, true),
+		}))
+		o.ChangedFiles = true
+		if _, err := BuildBundle(o); err == nil {
+			t.Error("the manifest named a file that is not there, and the bundle was built anyway")
+		}
+	})
+}
+
+// TestBuildBundleOrdersContentBeforeRawSessions is what makes the size
+// fallback safe: BuildBundle retries with the raw sessions left out, so
+// anything already in the entry list before them survives. Content is built
+// first, so an oversized transcript can never cost a bundle its code.
+func TestBuildBundleOrdersContentBeforeRawSessions(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	transcripts := t.TempDir()
+	transcript := filepath.Join(transcripts, "s1.jsonl")
+	os.WriteFile(transcript, []byte(`{"sessionId":"s1"}`+"\n"), 0o644)
+	capRed := redact.NewWith(nil, "")
+	staged, err := capture.Stage(capture.Options{
+		Head: testHead, Scope: "s", Redactor: capRed,
+		Sessions: []*model.Session{{Harness: model.HarnessClaudeCode, ID: "s1", SourcePath: transcript, CWD: "/w"}},
+	})
+	if err != nil || staged.Empty() {
+		t.Fatalf("Stage: %v (empty=%v)", err, staged.Empty())
+	}
+
+	o := buildOptions(t, changedScanFolder(t, nil))
+	o.ChangedFiles = true
+	o.Raw, o.CaptureCounts = staged, capRed.Counts()
+	b, err := BuildBundle(o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !b.RawIncluded {
+		t.Fatal("the raw session should be here")
+	}
+	var lastContent, firstRaw = -1, len(b.Entries)
+	for i, name := range b.Entries {
+		if strings.Contains(name, "changed-files/") {
+			lastContent = i
+		}
+		if strings.HasPrefix(name, "raw-sessions/") && i < firstRaw {
+			firstRaw = i
+		}
+	}
+	if lastContent < 0 {
+		t.Fatalf("no content in the bundle: %v", b.Entries)
+	}
+	if lastContent > firstRaw {
+		t.Errorf("content is interleaved with the raw sessions, so the fallback could drop it: %v", b.Entries)
+	}
+}
+
+// TestBuildBundleRejectsATamperedManifestName covers the one place a name from
+// a manifest becomes a filesystem path. The manifest lives in the user's own
+// scan folder, so this is defence in depth rather than a live hole — but the
+// name is joined to a path, so it is checked rather than trusted.
+func TestBuildBundleRejectsATamperedManifestName(t *testing.T) {
+	for _, bad := range []string{"../../../../etc/passwd", "/etc/passwd", `new\win.go`} {
+		t.Run(bad, func(t *testing.T) {
+			manifest := strings.Replace(changedManifest(t, true), "new/src/app.go", bad, 1)
+			o := buildOptions(t, scanFolder(t, map[string]string{"changed-files/manifest.json": manifest}))
+			o.ChangedFiles = true
+			if _, err := BuildBundle(o); err == nil {
+				t.Errorf("a manifest naming %q was accepted", bad)
+			}
+		})
+	}
+}

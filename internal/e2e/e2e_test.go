@@ -29,14 +29,15 @@ func TestE2E_GoldenScenario(t *testing.T) {
 	t.Setenv("PAIRCLI_EVENTS_DIR", w.hookDir)
 
 	res, err := scan.Run(context.Background(), scan.Options{
-		Repo:    e2eRepo,
-		Number:  e2eNumber,
-		CWD:     w.repoDir,
-		OutDir:  w.outDir,
-		Runner:  w.runner,
-		Config:  w.cfg,
-		Now:     e2eAt(e2eNowHHMM),
-		Version: e2eVersion,
+		Repo:                e2eRepo,
+		Number:              e2eNumber,
+		CWD:                 w.repoDir,
+		OutDir:              w.outDir,
+		Runner:              w.runner,
+		Config:              w.cfg,
+		ChangedFileContents: true,
+		Now:                 e2eAt(e2eNowHHMM),
+		Version:             e2eVersion,
 	})
 	if err != nil {
 		t.Fatalf("e2e: scan.Run: %v", err)
@@ -57,6 +58,10 @@ func TestE2E_GoldenScenario(t *testing.T) {
 
 	t.Run("assertions", func(t *testing.T) {
 		e2eAssertScenario(t, w, res)
+	})
+
+	t.Run("changed files", func(t *testing.T) {
+		e2eAssertChangedFiles(t, w, res)
 	})
 }
 
@@ -499,4 +504,120 @@ func toString(v any) string {
 	}
 	raw, _ := json.Marshal(v)
 	return string(raw)
+}
+
+// e2eAssertChangedFiles checks the whole-file contents the scan wrote: one
+// entry per changed file, the sides its status calls for, every named file
+// readable, and no secret in any of them. The release workflow's content
+// carries the raw .env value, so this is where the content tree is held to the
+// rule every other output file meets.
+func e2eAssertChangedFiles(t *testing.T, w *world, res *scan.Result) {
+	t.Helper()
+	if res.ChangedFiles == nil {
+		t.Fatal("e2e: the scan wrote no changed-file contents")
+	}
+	paths := e2eChangedPaths()
+	if got, want := res.ChangedFiles.Files, len(paths); got != want {
+		t.Errorf("changed-files files = %d, want %d", got, want)
+	}
+	if res.ChangedFiles.SidesSkipped != 0 {
+		t.Errorf("sides skipped = %d, want none: every changed file is small text", res.ChangedFiles.SidesSkipped)
+	}
+	if res.ChangedFiles.SidesPartial != 0 {
+		t.Errorf("sides partial = %d, want none: no changed file is near a cap", res.ChangedFiles.SidesPartial)
+	}
+
+	raw, err := os.ReadFile(filepath.Join(w.outDir, "changed-files", "manifest.json"))
+	if err != nil {
+		t.Fatalf("e2e: reading the changed-files manifest: %v", err)
+	}
+	var m struct {
+		SchemaVersion int    `json:"schema_version"`
+		HeadSHA       string `json:"head_sha"`
+		BaseSHA       string `json:"base_sha"`
+		BaseKind      string `json:"base_kind"`
+		Files         []struct {
+			Path    string                    `json:"path"`
+			Status  string                    `json:"status"`
+			Sides   map[string]map[string]any `json:"sides"`
+			Skipped map[string]any            `json:"skipped"`
+		} `json:"files"`
+	}
+	if err := json.Unmarshal(raw, &m); err != nil {
+		t.Fatalf("e2e: the changed-files manifest is not valid JSON: %v", err)
+	}
+	if m.SchemaVersion != 1 {
+		t.Errorf("e2e: manifest schema = %d, want 1", m.SchemaVersion)
+	}
+	// The head this manifest names is the one bundle.json and the scan folder
+	// are named after — the payload has no headRefOid, so it is the last commit.
+	if want := e2eCommitSHAs[len(e2eCommitSHAs)-1]; m.HeadSHA != want {
+		t.Errorf("e2e: manifest head = %q, want %q", m.HeadSHA, want)
+	}
+	// GitHub's diff is taken against the merge base, so that is the revision
+	// the old sides were read at.
+	if m.BaseSHA != e2eBaseSHA || m.BaseKind != "merge_base" {
+		t.Errorf("e2e: base = %q/%q, want %q/merge_base", m.BaseSHA, m.BaseKind, e2eBaseSHA)
+	}
+
+	seen := map[string]bool{}
+	wantSides := 0
+	for _, f := range m.Files {
+		seen[f.Path] = true
+		for _, side := range sidesForStatus(f.Status) {
+			wantSides++
+			s, ok := f.Sides[side]
+			if !ok {
+				t.Errorf("e2e: %s (%s) has no %s side: %+v", f.Path, f.Status, side, f.Skipped)
+				continue
+			}
+			rel, _ := s["file"].(string)
+			// The manifest's file field is relative to changed-files/.
+			body, err := os.ReadFile(filepath.Join(w.outDir, "changed-files", filepath.FromSlash(rel)))
+			if err != nil {
+				t.Errorf("e2e: %s names %s, which is not there: %v", f.Path, rel, err)
+				continue
+			}
+			if len(body) != int(s["bytes"].(float64)) {
+				t.Errorf("e2e: %s: bytes does not match the file on disk", rel)
+			}
+			if strings.Contains(string(body), e2eEnvValue) {
+				t.Errorf("e2e: %s carries the raw .env value", rel)
+			}
+		}
+	}
+	if got := res.ChangedFiles.SidesWritten; got != wantSides {
+		t.Errorf("sides written = %d, want %d for these statuses", got, wantSides)
+	}
+	for _, path := range paths {
+		if !seen[path] {
+			t.Errorf("e2e: the manifest has no entry for %s", path)
+		}
+	}
+
+	// The planted secret is redacted rather than merely absent from the
+	// rendered outputs: the file that carries it is where it would survive.
+	workflow, err := os.ReadFile(filepath.Join(w.outDir, "changed-files", "new", ".github", "workflows", "release.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(workflow), e2eEnvValue) {
+		t.Errorf("e2e: the changed file's content carries the raw .env value:\n%s", workflow)
+	}
+	if !strings.Contains(string(workflow), "[REDACTED:") {
+		t.Errorf("e2e: the changed file's content was not redacted:\n%s", workflow)
+	}
+}
+
+// sidesForStatus mirrors the sides a file's status calls for: an added file has
+// no old side, a deleted one no new side.
+func sidesForStatus(status string) []string {
+	switch status {
+	case "added":
+		return []string{"new"}
+	case "deleted":
+		return []string{"old"}
+	default:
+		return []string{"new", "old"}
+	}
 }

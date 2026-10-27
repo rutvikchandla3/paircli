@@ -24,6 +24,7 @@ import (
 	"github.com/rutvikchandla3/paircli/internal/attrib"
 	"github.com/rutvikchandla3/paircli/internal/config"
 	"github.com/rutvikchandla3/paircli/internal/engine"
+	"github.com/rutvikchandla3/paircli/internal/filecontent"
 	"github.com/rutvikchandla3/paircli/internal/gitinfo"
 	"github.com/rutvikchandla3/paircli/internal/judge"
 	"github.com/rutvikchandla3/paircli/internal/link"
@@ -41,21 +42,22 @@ const CommentMarker = "<!-- paircli -->"
 
 // Options configures one scan.
 type Options struct {
-	Repo            string         // "owner/repo"
-	Number          int            // PR number
-	CWD             string         // where scan was invoked
-	OutDir          string         // default ~/.paircli/scans/<owner>__<repo>/pr-<n>/<head-commit>
-	Runner          pr.Runner      // gh runner; pr.GH{} in the CLI
-	Config          *config.Config // nil → config.Load(repo root)
-	NoHooks         bool           // skip hook-log records
-	NoCommitPatches bool           // skip per-commit patches
-	NoAgentTrace    bool           // skip agent-trace.json
-	Snapshot        bool           // also write snapshot.json (a full replay record)
-	Post            bool           // upsert the PR comment
-	IncludePrompts  bool           // let comment.md carry prompt text
-	LLM             llm.Provider   // nil = LLM pass off (T26 uses it)
-	Now             time.Time      // zero → time.Now()
-	Version         string         // written into the report
+	Repo                string         // "owner/repo"
+	Number              int            // PR number
+	CWD                 string         // where scan was invoked
+	OutDir              string         // default ~/.paircli/scans/<owner>__<repo>/pr-<n>/<head-commit>
+	Runner              pr.Runner      // gh runner; pr.GH{} in the CLI
+	Config              *config.Config // nil → config.Load(repo root)
+	NoHooks             bool           // skip hook-log records
+	NoCommitPatches     bool           // skip per-commit patches
+	NoAgentTrace        bool           // skip agent-trace.json
+	Snapshot            bool           // also write snapshot.json (a full replay record)
+	ChangedFileContents bool           // also write the changed files' whole contents
+	Post                bool           // upsert the PR comment
+	IncludePrompts      bool           // let comment.md carry prompt text
+	LLM                 llm.Provider   // nil = LLM pass off (T26 uses it)
+	Now                 time.Time      // zero → time.Now()
+	Version             string         // written into the report
 }
 
 // Result is what one scan produced.
@@ -67,6 +69,10 @@ type Result struct {
 	// Head is the PR head commit the folder is named after, lowercase; ""
 	// when the PR carried none.
 	Head string
+
+	// ChangedFiles summarises the changed-file contents this scan wrote, and is
+	// nil when it wrote none.
+	ChangedFiles *filecontent.Totals
 
 	// Sessions are the sessions linked to the PR, with their SourcePath: what
 	// raw-session capture reads. Detector results never mutate them.
@@ -175,6 +181,31 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 		}
 	}
 
+	// The changed files' whole text: a reader needs the function around a
+	// changed line, and a hunk carries about three lines of context. It is
+	// written into the scan folder beside the diff, where the bundle picks it
+	// up. A scan that was not asked for it removes an earlier run's copy rather
+	// than leaving it for a later publish to ship.
+	var changedFiles *filecontent.Totals
+	if o.ChangedFileContents {
+		m := filecontent.Build(filecontent.Options{
+			Repo:    o.Repo,
+			Number:  o.Number,
+			PR:      p,
+			HeadSHA: headSHA(p),
+			Root:    root,
+			Runner:  o.Runner,
+			Now:     now,
+			Tool:    "paircli " + o.Version,
+		})
+		if err := filecontent.Write(outDir, m); err != nil {
+			return nil, err
+		}
+		changedFiles = &m.Totals
+	} else if err := filecontent.Remove(outDir); err != nil {
+		return nil, err
+	}
+
 	// T26: LLM pass. Without a provider the three inferred signals (DEC-3,
 	// CON-1, CON-3) stay unknown, and the report lists them under "Not
 	// available" with the hint to run with --llm. With one, the judge turns the
@@ -224,12 +255,13 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 	}
 
 	return &Result{
-		Report:    rep,
-		OutDir:    outDir,
-		Alerts:    alertCount(sigs),
-		Head:      headSHA(p),
-		Sessions:  res.Sessions,
-		LLMErrors: llmErrors,
+		Report:       rep,
+		OutDir:       outDir,
+		Alerts:       alertCount(sigs),
+		Head:         headSHA(p),
+		Sessions:     res.Sessions,
+		LLMErrors:    llmErrors,
+		ChangedFiles: changedFiles,
 	}, nil
 }
 

@@ -5,6 +5,7 @@
 package e2e
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -204,13 +205,85 @@ func e2eCommitArg(sha string) string {
 	return fmt.Sprintf("api repos/%s/commits/%s", e2eRepo, sha)
 }
 
-// addE2EPR registers the PR view JSON, the combined diff and the three
-// per-commit patches with the fake runner.
+// addE2EPR registers the PR view JSON, the combined diff, the three per-commit
+// patches and the changed files' whole contents with the fake runner.
 func (r *fakeRunner) addE2EPR() {
 	r.set(e2ePRViewArg, e2ePRView)
 	r.set(e2ePRDiffArg, e2eCombinedDiff)
 	for i, sha := range e2eCommitSHAs {
 		r.set(e2eCommitArg(sha), e2eCommitPatch(i))
+	}
+	r.addE2EChangedFiles()
+}
+
+// e2eBaseSHA is the merge base of the scenario PR, which the compare endpoint
+// reports so the old sides have a revision to be read at.
+const e2eBaseSHA = "9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0c"
+
+// e2eBlobSHA is the object id the contents endpoint reports for every body.
+const e2eBlobSHA = "5c2f8a1b4e7d0c3f6a9b2e5d8c1f4a7b0e3d6c9f"
+
+// e2eCompareArg is the `gh api` argument list that resolves the merge base.
+func e2eCompareArg(base, head string) string {
+	return fmt.Sprintf("api repos/%s/compare/%s...%s", e2eRepo, base, head)
+}
+
+// e2eContentsArg is the `gh api` argument list for one file at one revision.
+func e2eContentsArg(rev, path string) string {
+	return fmt.Sprintf("api repos/%s/contents/%s?ref=%s", e2eRepo, path, rev)
+}
+
+// e2eChangedPaths are the paths the combined diff changes, read out of the diff
+// itself so this cannot drift from the scenario.
+func e2eChangedPaths() []string {
+	var paths []string
+	for _, line := range strings.Split(e2eCombinedDiff, "\n") {
+		if !strings.HasPrefix(line, "diff --git ") {
+			continue
+		}
+		rest := strings.TrimPrefix(line, "diff --git ")
+		if i := strings.LastIndex(rest, " b/"); i >= 0 {
+			paths = append(paths, rest[i+3:])
+		}
+	}
+	return paths
+}
+
+// e2eChangedFileBodies is the whole text of each changed file the scenario
+// serves.
+//
+// The release workflow carries the raw .env value on purpose: the scan's
+// content tree is held to the same no-secret rule as every other output file
+// (see e2eAssertNoSecret), and this is what proves it.
+func e2eChangedFileBodies() map[string]string {
+	bodies := map[string]string{}
+	for _, path := range e2eChangedPaths() {
+		if path == ".github/workflows/release.yml" {
+			bodies[path] = "name: release\n\nenv:\n  NPM_TOKEN: " + e2eEnvValue + "\n\njobs:\n  publish:\n    runs-on: ubuntu-latest\n"
+			continue
+		}
+		bodies[path] = "// " + path + "\n\nexport const value = 1\n"
+	}
+	return bodies
+}
+
+// e2eContentsJSON is a `gh api contents` reply carrying body inline, the shape
+// GitHub uses up to 1 MiB.
+func e2eContentsJSON(body string) string {
+	enc := base64.StdEncoding.EncodeToString([]byte(body))
+	return fmt.Sprintf(`{"size":%d,"sha":%q,"encoding":"base64","content":%q}`, len(body), e2eBlobSHA, enc)
+}
+
+// addE2EChangedFiles registers a body for every changed file at both revisions.
+// Without them every side would be recorded as skipped, which is what a missing
+// remote deserves but not what this scenario is for.
+func (r *fakeRunner) addE2EChangedFiles() {
+	head := e2eCommitSHAs[len(e2eCommitSHAs)-1]
+	r.set(e2eCompareArg(e2eBaseRef, head), `{"merge_base_commit":{"sha":"`+e2eBaseSHA+`"}}`)
+	for path, body := range e2eChangedFileBodies() {
+		for _, rev := range []string{head, e2eBaseSHA} {
+			r.set(e2eContentsArg(rev, path), e2eContentsJSON(body))
+		}
 	}
 }
 

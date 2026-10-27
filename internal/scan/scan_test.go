@@ -2,10 +2,12 @@ package scan
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -468,5 +470,121 @@ func TestRun_SnapshotOnFreshOutDir(t *testing.T) {
 	}
 	if string(replayed) != string(reported) {
 		t.Error("the snapshot does not reproduce the scan's own signals")
+	}
+}
+
+// scanContentsArg is the gh call the content pass makes for one file.
+func scanContentsArg(rev, path string) string {
+	return "api repos/acme/shop/contents/" + path + "?ref=" + rev
+}
+
+// scanContentsBody is a `gh api contents` reply carrying body inline.
+func scanContentsBody(body string) []byte {
+	enc := base64.StdEncoding.EncodeToString([]byte(body))
+	return []byte(`{"size":` + strconv.Itoa(len(body)) + `,"sha":"ccccccc3","encoding":"base64","content":"` + enc + `"}`)
+}
+
+// scanRunOptions is the fixture every scan test in this file starts from.
+func scanRunOptions(t *testing.T, repoRoot string, r *scanRunner) Options {
+	t.Helper()
+	return Options{
+		Repo:            "acme/shop",
+		Number:          7,
+		CWD:             repoRoot,
+		Runner:          r,
+		Config:          scanConfig(t, t.TempDir()),
+		NoHooks:         true,
+		NoCommitPatches: true,
+		Now:             time.Date(2026, 9, 28, 12, 0, 0, 0, time.UTC),
+		Version:         "0.0.0-test",
+	}
+}
+
+func TestRun_WritesChangedFileContents(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	repoRoot := t.TempDir()
+	scanGitRepo(t, repoRoot, "git@github.com:acme/shop.git")
+	projects := t.TempDir()
+	scanTranscript(t, projects, repoRoot)
+
+	r := newScanRunner()
+	r.responses[scanPRArg] = []byte(scanGHView)
+	r.responses[scanDiffArg] = []byte(scanDiff)
+	// The checkout holds no objects, so the content comes from the API.
+	base := strings.Repeat("b", 40)
+	r.responses["api repos/acme/shop/compare/main...aaaaaaa1"] = []byte(`{"merge_base_commit":{"sha":"` + base + `"}}`)
+	r.responses[scanContentsArg("aaaaaaa1", "src/webhooks/retry.ts")] = scanContentsBody("function send() {\nreturn sendWithRetry(url, body)\n}\n")
+	r.responses[scanContentsArg(base, "src/webhooks/retry.ts")] = scanContentsBody("function send() {\n}\n")
+
+	o := scanRunOptions(t, repoRoot, r)
+	o.Config = scanConfig(t, projects)
+	o.ChangedFileContents = true
+	res, err := Run(context.Background(), o)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	if res.ChangedFiles == nil {
+		t.Fatal("the scan reports no changed-file summary")
+	}
+	if res.ChangedFiles.Files != 1 || res.ChangedFiles.SidesWritten != 2 {
+		t.Errorf("totals = %+v, want one file and both sides", res.ChangedFiles)
+	}
+	manifest := filepath.Join(res.OutDir, "changed-files", "manifest.json")
+	raw, err := os.ReadFile(manifest)
+	if err != nil {
+		t.Fatalf("no manifest at %s: %v", manifest, err)
+	}
+	for _, want := range []string{
+		`"path": "src/webhooks/retry.ts"`,
+		`"status": "modified"`,
+		`"file": "new/src/webhooks/retry.ts"`,
+		`"file": "old/src/webhooks/retry.ts"`,
+		`"source": "api"`,
+	} {
+		if !strings.Contains(string(raw), want) {
+			t.Errorf("manifest lacks %s:\n%s", want, raw)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(res.OutDir, "changed-files", "new", "src", "webhooks", "retry.ts")); err != nil {
+		t.Errorf("the new side was not written: %v", err)
+	}
+}
+
+func TestRun_WithoutTheOptionRemovesAnEarlierSubtree(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	repoRoot := t.TempDir()
+	scanGitRepo(t, repoRoot, "git@github.com:acme/shop.git")
+	projects := t.TempDir()
+	scanTranscript(t, projects, repoRoot)
+
+	r := newScanRunner()
+	r.responses[scanPRArg] = []byte(scanGHView)
+	r.responses[scanDiffArg] = []byte(scanDiff)
+
+	o := scanRunOptions(t, repoRoot, r)
+	o.Config = scanConfig(t, projects)
+	o.OutDir = filepath.Join(t.TempDir(), "scan")
+	// An earlier run with the option on left content in this folder. The key is
+	// flipped now, so the next bundle must not pick it up.
+	stale := filepath.Join(o.OutDir, "changed-files", "new", "stale.go")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("an earlier run\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	res, err := Run(context.Background(), o)
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if res.ChangedFiles != nil {
+		t.Errorf("ChangedFiles = %+v, want nil", res.ChangedFiles)
+	}
+	if _, err := os.Stat(filepath.Join(res.OutDir, "changed-files")); !os.IsNotExist(err) {
+		t.Errorf("the earlier run's content survived: %v", err)
 	}
 }

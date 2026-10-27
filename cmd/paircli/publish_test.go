@@ -16,6 +16,8 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -35,6 +37,11 @@ const (
 
 	pubViewKey = "pr view 7 -R acme/shop --json number,url,title,body,headRefName,headRefOid,baseRefName,createdAt,commits"
 	pubDiffKey = "pr diff 7 -R acme/shop"
+
+	pubBase           = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	pubComparePrefix  = "api repos/acme/shop/compare/main..."
+	pubContentsPrefix = "api repos/acme/shop/contents/src/webhooks/retry.ts?ref="
+	pubFileBody       = "function send() {\nreturn sendWithRetry(url, body)\n}\n"
 )
 
 const pubPRView = `{
@@ -92,6 +99,14 @@ func (g *pubGH) Run(args ...string) ([]byte, error) {
 		return []byte(pubDiff), nil
 	case key == "api repos/acme/shop/commits/aaaaaaa1":
 		return []byte(pubCommit), nil
+	case strings.HasPrefix(key, pubComparePrefix):
+		// The merge base the changed-file contents are read at, for whichever
+		// head this run is scanning.
+		return []byte(`{"merge_base_commit":{"sha":"` + pubBase + `"}}`), nil
+	case strings.HasPrefix(key, pubContentsPrefix):
+		// The one changed file's whole text, at either revision.
+		enc := base64.StdEncoding.EncodeToString([]byte(pubFileBody))
+		return []byte(`{"size":` + strconv.Itoa(len(pubFileBody)) + `,"sha":"dddddddd","encoding":"base64","content":"` + enc + `"}`), nil
 	case key == "api user --jq .login":
 		return []byte("kousik\n"), nil
 	case key == "api --paginate repos/acme/shop/issues/7/comments?per_page=100":
@@ -747,6 +762,146 @@ func TestParsePublishArgs(t *testing.T) {
 	for _, bad := range [][]string{nil, {"--wait", "7"}, {"7", "extra"}, {"7", "--nope"}} {
 		if _, err := parsePublishArgs(bad); err == nil {
 			t.Errorf("parsePublishArgs(%v) accepted bad input", bad)
+		}
+	}
+}
+
+// dryRunBundle runs a dry run and returns the summary it printed, including
+// the path of the bundle it built and left on disk.
+func dryRunBundle(t *testing.T, h *pubHarness, args ...string) publishSummary {
+	t.Helper()
+	if err := h.run(append([]string{"--dry-run", "--json", "--no-comment"}, args...)...); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	var out publishSummary
+	if err := json.Unmarshal(h.stdout.Bytes(), &out); err != nil {
+		t.Fatalf("parsing the dry-run summary: %v\n%s", err, h.stdout.String())
+	}
+	if out.Bundle == nil || out.Bundle.Path == "" {
+		t.Fatalf("the dry run named no bundle: %s", h.stdout.String())
+	}
+	return out
+}
+
+// zipEntryNames are the entry names of a built bundle.
+func zipEntryNames(t *testing.T, path string) []string {
+	t.Helper()
+	r, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatalf("opening %s: %v", path, err)
+	}
+	defer r.Close()
+	names := make([]string, 0, len(r.File))
+	for _, f := range r.File {
+		names = append(names, f.Name)
+	}
+	return names
+}
+
+func TestPublishDryRunReportsChangedFiles(t *testing.T) {
+	h := newPubHarness(t)
+	if err := h.run("--dry-run", "--json", "--no-comment"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	var out publishSummary
+	if err := json.Unmarshal(h.stdout.Bytes(), &out); err != nil {
+		t.Fatalf("parsing the dry-run summary: %v\n%s", err, h.stdout.String())
+	}
+	if out.Bundle == nil || out.Bundle.ChangedFiles == nil {
+		t.Fatalf("the dry run does not report the changed files: %s", h.stdout.String())
+	}
+	c := out.Bundle.ChangedFiles
+	if c.Files != 1 || c.SidesWritten != 2 {
+		t.Errorf("changed files = %+v, want one file and both sides", c)
+	}
+	if c.Bytes == 0 {
+		t.Errorf("changed files = %+v, want some bytes", c)
+	}
+}
+
+func TestPublishWritesChangedFilesIntoTheBundle(t *testing.T) {
+	h := newPubHarness(t)
+	out := dryRunBundle(t, h)
+
+	names := zipEntryNames(t, out.Bundle.Path)
+	prefix := ".paircli/pr-7/" + pubHead + "/changed-files/"
+	for _, want := range []string{
+		prefix + "manifest.json",
+		prefix + "new/src/webhooks/retry.ts",
+		prefix + "old/src/webhooks/retry.ts",
+	} {
+		if !slices.Contains(names, want) {
+			t.Errorf("the bundle lacks %s: %v", want, names)
+		}
+	}
+}
+
+func TestPublishWithoutFileContents(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		off  bool // the config key, rather than the flag
+	}{
+		{name: "flag", args: []string{"--dry-run", "--json", "--no-comment", "--no-file-contents"}},
+		{name: "config says false", args: []string{"--dry-run", "--json", "--no-comment"}, off: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newPubHarness(t)
+			if tc.off {
+				mustWrite(t, filepath.Join(h.repoDir, ".paircli.json"),
+					`{"publish":{"changed_file_contents":false}}`)
+			}
+			if err := h.run(tc.args...); err != nil {
+				t.Fatalf("publish: %v", err)
+			}
+			var out publishSummary
+			if err := json.Unmarshal(h.stdout.Bytes(), &out); err != nil {
+				t.Fatalf("parsing the dry-run summary: %v\n%s", err, h.stdout.String())
+			}
+			if out.Bundle.ChangedFiles != nil {
+				t.Errorf("changed files = %+v, want none", out.Bundle.ChangedFiles)
+			}
+			if _, err := os.Stat(filepath.Join(h.scanFile(pubHead, "changed-files"))); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("the subtree was still written: %v", err)
+			}
+		})
+	}
+}
+
+// TestPublishUnmentionedConfigKeyLeavesContentsOn is the regression the
+// pointer exists for: a plain bool defaulting to true would read as false in
+// every repository whose config file does not name the key.
+func TestPublishUnmentionedConfigKeyLeavesContentsOn(t *testing.T) {
+	h := newPubHarness(t)
+	mustWrite(t, filepath.Join(h.repoDir, ".paircli.json"), `{"comment":{"max_lines":3}}`)
+	if err := h.run("--dry-run", "--json", "--no-comment"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	var out publishSummary
+	if err := json.Unmarshal(h.stdout.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	if out.Bundle.ChangedFiles == nil || out.Bundle.ChangedFiles.SidesWritten == 0 {
+		t.Errorf("a config that does not mention the key turned the feature off: %+v", out.Bundle.ChangedFiles)
+	}
+}
+
+// TestPublishDoesNotUploadAStaleChangedFilesSubtree covers the failure the gate
+// exists for: the folder is keyed by head, so an earlier run with the option on
+// leaves content behind, and the run that turned it off must not ship it.
+func TestPublishDoesNotUploadAStaleChangedFilesSubtree(t *testing.T) {
+	h := newPubHarness(t)
+	stale := h.scanFile(pubHead, "changed-files/new/src/stale.go")
+	if err := os.MkdirAll(filepath.Dir(stale), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stale, []byte("an earlier run's file\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := dryRunBundle(t, h, "--no-file-contents")
+	for _, name := range zipEntryNames(t, out.Bundle.Path) {
+		if strings.Contains(name, "stale.go") {
+			t.Errorf("the bundle shipped the earlier run's content: %s", name)
 		}
 	}
 }

@@ -301,3 +301,27 @@ func TestAddressOfSecretNamedVariableIsNotASecret(t *testing.T) {
 		t.Errorf("counted %v", r.Counts())
 	}
 }
+
+// An AWS secret is 40 characters, but a longer run after the name is one value:
+// redacting only the first 40 would ship the tail.
+func TestAWSSecretRedactsTheWholeValue(t *testing.T) {
+	long := awsSec + "BCDEF"
+	in := "aws_secret_access_key=" + long
+	want := "aws_secret_access_key=[REDACTED:aws_secret]"
+	if got := New0().Text(in); got != want {
+		t.Errorf("Text: got %q, want %q", got, want)
+	}
+	if got := string(New0().Bytes([]byte(in + "\n"))); got != want+"\n" {
+		t.Errorf("Bytes: got %q, want %q", got, want+"\n")
+	}
+	if got := string(New0().FileBytes([]byte(in + "\n"))); got != want+"\n" {
+		t.Errorf("FileBytes: got %q, want %q", got, want+"\n")
+	}
+	// Shorter is not an AWS secret (though the name still makes it a secret
+	// assignment).
+	r := New0()
+	r.Text("aws_secret_access_key=" + awsSec[:39])
+	if r.Counts()[KindAWSSecret] != 0 {
+		t.Errorf("39 characters: counts = %v", r.Counts())
+	}
+}

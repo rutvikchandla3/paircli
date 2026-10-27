@@ -27,7 +27,7 @@ import (
 
 // RulesVersion identifies the rule set. It is written into bundle.json and
 // bumped whenever a rule changes what is redacted.
-const RulesVersion = "1"
+const RulesVersion = "2"
 
 // Redaction kinds, as they appear in [REDACTED:<kind>] and in the counts.
 const (
@@ -111,7 +111,7 @@ var rules = []rule{
 	},
 	{
 		kind:  KindAWSSecret,
-		re:    regexp.MustCompile(`(?i)` + lead + `aws_?secret_?(?:access_?)?key` + sep + `([A-Za-z0-9/+=]{40})`),
+		re:    regexp.MustCompile(`(?i)` + lead + `aws_?secret_?(?:access_?)?key` + sep + `([A-Za-z0-9/+=]{40,})`),
 		group: 1,
 		hints: []string{"secret"},
 	},
@@ -349,7 +349,7 @@ func (r *Redactor) FileBytes(b []byte) []byte {
 	if len(b) == 0 {
 		return b
 	}
-	return []byte(r.scrubFile(string(b)))
+	return []byte(r.scrubFile(string(b), true))
 }
 
 // scrub runs every rule and then the exact literals over s, line by line.
@@ -365,20 +365,30 @@ func (r *Redactor) scrub(s string) string {
 }
 
 // scrubFile is scrub for a whole file: a rule marked multiline runs over the
-// whole buffer, and every other rule runs line by line.
-func (r *Redactor) scrubFile(s string) string {
+// whole buffer, and every other rule runs line by line. keepLines makes a match
+// keep the newlines it swallowed, which FileBytes needs and a JSON string does
+// not.
+func (r *Redactor) scrubFile(s string, keepLines bool) string {
 	if s == "" {
 		return s
 	}
+	lower := strings.ToLower(s)
 	for i := range rules {
 		ru := &rules[i]
-		if ru.multiline {
-			s, _ = r.apply(ru, s, strings.ToLower(s), true)
-			continue
+		if !hasAny(lower, ru.hints) {
+			continue // no line has a hint either
 		}
-		s = r.applyPerLine(ru, s)
+		var out string
+		if ru.multiline {
+			out, _ = r.apply(ru, s, lower, keepLines)
+		} else {
+			out = r.applyPerLine(ru, s)
+		}
+		if out != s {
+			s, lower = out, strings.ToLower(out)
+		}
 	}
-	return r.scrubLiterals(s, true)
+	return r.scrubLiterals(s, keepLines)
 }
 
 // applyPerLine runs one rule over s one line at a time, the way Bytes does, so

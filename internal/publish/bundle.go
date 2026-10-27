@@ -145,7 +145,7 @@ func readScanFiles(o BundleOptions) ([]entry, map[string]int, error) {
 		if err != nil {
 			return nil, nil, err
 		}
-		redacted, err := redactScanFile(name, data, redactor.Bytes)
+		redacted, err := redactScanFile(name, data, scanFileRedaction(name, redactor))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -164,11 +164,28 @@ func readScanFiles(o BundleOptions) ([]entry, map[string]int, error) {
 	return out, redactor.Counts(), nil
 }
 
+// scanFileRedaction is how one scan file is redacted. A JSON file has the
+// decoded text of its strings redacted, because its escaped spelling hides
+// secrets from the rules (see redact.JSON). report.md and comment.md are whole
+// documents, so a PEM block in one is redacted across its lines the way a
+// changed file's is.
+func scanFileRedaction(name string, r *redact.Redactor) func([]byte) []byte {
+	switch {
+	case strings.HasSuffix(name, ".json"):
+		return r.JSON
+	case strings.HasSuffix(name, ".md"):
+		return r.FileBytes
+	}
+	return r.Bytes
+}
+
 // redactScanFile redacts one scan file. The AI pipeline parses the .json files,
 // and a file it cannot parse is not an error there: it quietly falls back to a
 // summary that knows nothing about the change. So a redaction that turns valid
 // JSON into invalid JSON stops the publish, naming the file, instead of
-// uploading a bundle that looks fine and analyses nothing.
+// uploading a bundle that looks fine and analyses nothing. redact.JSON cannot
+// do that by construction; the check stays as the backstop for when it falls
+// back to Bytes.
 func redactScanFile(name string, data []byte, redact func([]byte) []byte) ([]byte, error) {
 	out := redact(data)
 	if strings.HasSuffix(name, ".json") && json.Valid(data) && !json.Valid(out) {

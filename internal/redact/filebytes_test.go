@@ -1,6 +1,7 @@
 package redact
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -145,5 +146,99 @@ func TestFileBytesKeepsEnvironmentValuesOffLine(t *testing.T) {
 	}
 	if got, want := strings.Count(out, "\n"), strings.Count(in, "\n"); got != want {
 		t.Errorf("newline count = %d, want %d:\n%q", got, want, out)
+	}
+}
+
+// composeSecrets is the shape that broke whole-buffer redaction: a key whose
+// name ends in "secret", a blank line, then a bare "secrets:" key of its own.
+// secret_assignment's separator allows whitespace before the colon, and in
+// whole-buffer mode that whitespace was a newline, so the rule paired "secret"
+// with the next line's text and redacted a line holding no secret.
+const composeSecrets = `services:
+  ade-jupyter-secret:
+
+secrets:
+  ade_ca_bundle:
+    file: ${ADE_CA_BUNDLE_FILE:-/etc/ssl/cert.pem}
+`
+
+func TestFileBytesDoesNotRedactAcrossALineBreak(t *testing.T) {
+	r := NewWith(nil, "")
+	got := string(r.FileBytes([]byte(composeSecrets)))
+	if got != composeSecrets {
+		t.Errorf("whole-file redaction changed a file with no secret in it:\n got %q\nwant %q", got, composeSecrets)
+	}
+	if counts := r.Counts(); len(counts) != 0 {
+		t.Errorf("counts = %v, want none", counts)
+	}
+}
+
+// TestFileBytesEqualsBytesWithoutAMultiLineRule is the property the whole-file
+// pass has to hold: apart from the rules written to span lines, it redacts
+// exactly what the line-by-line pass redacts, and no more.
+func TestFileBytesEqualsBytesWithoutAMultiLineRule(t *testing.T) {
+	inputs := []string{
+		composeSecrets,
+		"",
+		"\n",
+		"a",
+		"a\n",
+		"secrets:\n",
+		"secret:\nkey:\nvalue:\n",
+		"password =\n\"hunter2hunter2\"\n",
+		"api_key: token: secret:\n",
+		"token is " + ghToken + " ok",
+		"Authorization: Bearer abcdef1234567890\nnext line\n",
+		"key " + skKey + "\n",
+		"a\nb\nc\n" + composeSecrets + "d\n",
+		"// no trailing newline\nsecrets:",
+		"x\ny\n\ntoken:\napp:\n",
+	}
+	for _, in := range inputs {
+		r := NewWith(nil, "")
+		viaBytes := string(r.Bytes([]byte(in)))
+		r2 := NewWith(nil, "")
+		viaFile := string(r2.FileBytes([]byte(in)))
+		if viaBytes != viaFile {
+			t.Errorf("FileBytes differs from Bytes for %q:\n Bytes %q\n  File %q", in, viaBytes, viaFile)
+		}
+		if a, b := r.Counts(), r2.Counts(); !reflect.DeepEqual(a, b) {
+			t.Errorf("counts differ for %q: Bytes %v, FileBytes %v", in, a, b)
+		}
+	}
+}
+
+// TestFileBytesStillSpansLinesForTheRuleThatNeedsIt keeps the property above
+// from being satisfied by giving up on multi-line secrets: the private_key rule
+// must still fire where Bytes cannot.
+func TestFileBytesStillSpansLinesForTheRuleThatNeedsIt(t *testing.T) {
+	in := pemSource
+	r := NewWith(nil, "")
+	if !strings.Contains(string(r.Bytes([]byte(in))), "b3BlbnNzaC1rZXktdjEAAAAABG5vbmU") {
+		t.Fatal("Bytes redacted the block, so this test no longer shows the difference")
+	}
+	r2 := NewWith(nil, "")
+	out := string(r2.FileBytes([]byte(in)))
+	if strings.Contains(out, "b3BlbnNzaC1rZXktdjEAAAAABG5vbmU") {
+		t.Errorf("FileBytes left the key body in place:\n%s", out)
+	}
+	if !strings.Contains(out, "[REDACTED:private_key]") {
+		t.Errorf("FileBytes did not mark the key:\n%s", out)
+	}
+}
+
+// TestFileBytesRedactsAMultiLineLiteral covers the one thing the whole-file
+// pass does that Bytes cannot, beyond the multi-line rules: an exact value with
+// a newline in it, such as an environment variable's.
+func TestFileBytesRedactsAMultiLineLiteral(t *testing.T) {
+	value := "averyverylongsecret\nwithanewline"
+	in := "package a\n\nvar s = `" + value + "`\n"
+	r := NewWith([]string{"MULTILINE_SECRET=" + value}, "")
+	out := string(r.FileBytes([]byte(in)))
+	if strings.Contains(out, "averyverylongsecret") {
+		t.Errorf("the literal survived:\n%s", out)
+	}
+	if got, want := strings.Count(out, "\n"), strings.Count(in, "\n"); got != want {
+		t.Errorf("newline count = %d, want %d", got, want)
 	}
 }

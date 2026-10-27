@@ -138,12 +138,14 @@ goes through `internal/redact` (rules version `1`). A match is replaced by
 | `env_secret` | the exact value of this process's environment variables whose names contain `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `AUTH`, `CREDENTIAL` or `COOKIE` |
 | `npm_token` | the `_authToken=` values in `~/.npmrc` |
 
-Source files are redacted as whole buffers rather than line by line, so a rule
-can match across lines — which is what the `private_key` rule needs, since a PEM
-block spans several. A replacement keeps the newlines it removed, so line N of
-the redacted file is line N of the original and a diff's line numbers still
-point at the right code. Raw transcripts keep the stricter line-by-line rule:
-one match can never join two JSONL lines.
+Source files are redacted by the same rules, with one difference: the rules
+written to span lines — `private_key`, whose PEM block is several lines — run
+over the whole file instead of line by line, and a replacement keeps the
+newlines it removed so line N of the redacted file is line N of the original.
+Every other rule still runs line by line, exactly as it does on a transcript, so
+a rule whose separator can absorb a newline cannot pair a name on one line with
+a value on another and redact a line that holds no secret. `private_key` is dead
+in line-by-line mode, which is why the distinction exists.
 
 Generic assignments redact only values that look like secrets: at least 8
 characters, not a path, URL, boolean, number, placeholder (`$VAR`, `<token>`,

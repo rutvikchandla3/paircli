@@ -1080,7 +1080,19 @@ finding below was re-verified against the code before being folded in.
 
 ## As built
 
-Two deviations from the plan's letter, both noted in the final report:
+Review of a real bundle changed one thing the plan got wrong, and the build
+changed two more:
+
+- **Only the rules meant to span lines run whole-buffer.** The first version ran
+  *every* rule over the whole buffer. `secret_assignment`'s separator allows
+  whitespace before the colon, and over a whole file that whitespace is a
+  newline — so `secrets:` under a `*-secret:` key (docker-compose.yml, at head)
+  was paired with the next line's text and redacted, on a line holding no
+  secret. `Redactor.FileBytes` now applies a rule marked `multiline` over the
+  whole buffer and every other rule line by line, so its output equals `Bytes`'
+  for anything without a multi-line secret, which a property test pins.
+
+Two further deviations from the plan's letter:
 
 - **`FileBytes` preserves the newline count, not `countLines`.** The guard in
   `filecontent` compares newline counts, and `full_lines` is taken from the

@@ -13,6 +13,15 @@ import (
 	"github.com/rutvikchandla3/paircli/internal/gitinfo"
 	"github.com/rutvikchandla3/paircli/internal/hooklog"
 	"github.com/rutvikchandla3/paircli/internal/model"
+	"github.com/rutvikchandla3/paircli/internal/prtrigger"
+)
+
+// prRunner and hookStdout are the seams between a PostToolUse event and the
+// outside world (gh, a detached `paircli publish`, the agent's stdout), so
+// tests can observe the trigger without any of them.
+var (
+	prRunner             = prtrigger.Default
+	hookStdout io.Writer = os.Stdout
 )
 
 // hookMarker is the substring InstallHooks/UninstallHooks/HooksInstalled use
@@ -357,6 +366,7 @@ type hookStdinPayload struct {
 	ToolName      string          `json:"tool_name"`
 	ToolInput     json.RawMessage `json:"tool_input"`
 	ToolUseID     string          `json:"tool_use_id"`
+	ToolResponse  json.RawMessage `json:"tool_response"`
 	FilePath      string          `json:"file_path"`
 	LoadReason    string          `json:"load_reason"`
 	PreviousCWD   string          `json:"previous_cwd"`
@@ -368,10 +378,12 @@ type hookStdinPayload struct {
 
 // RunHookEvent implements `paircli hook claude-code <Event>`: it decodes the
 // hook payload Claude Code sends on stdin, builds one model.HookRecord, and
-// appends it to today's hook log (internal/hooklog). It never returns a
-// non-nil error to the caller and never prints to stdout: every failure is
-// logged to ~/.paircli/hook-errors.log so a broken hook can never break the
-// calling agent.
+// appends it to today's hook log (internal/hooklog). A PostToolUse for a
+// successful `gh pr create` or `git push` on a PR branch additionally starts
+// `paircli publish` in the background and prints one JSON object (the only
+// thing this hook ever prints). It never returns a non-nil error to the
+// caller: every failure is logged to ~/.paircli/hook-errors.log so a broken
+// hook can never break the calling agent.
 func RunHookEvent(event string, stdin io.Reader) error {
 	if mapped, ok := legacyEventArgs[event]; ok {
 		event = mapped
@@ -383,6 +395,16 @@ func RunHookEvent(event string, stdin io.Reader) error {
 		return nil
 	}
 
+	recordHookEvent(event, payload)
+	if event == "PostToolUse" {
+		triggerPublish(payload)
+	}
+	return nil
+}
+
+// recordHookEvent builds the one model.HookRecord an event is worth and
+// appends it to the hook log. Events that are not worth a record write nothing.
+func recordHookEvent(event string, payload hookStdinPayload) {
 	rec := model.HookRecord{
 		Harness:   model.HarnessClaudeCode,
 		Event:     event,
@@ -403,7 +425,7 @@ func RunHookEvent(event string, stdin io.Reader) error {
 	case "PostToolUse":
 		cmd := extractBashCommand(payload.ToolInput)
 		if !gitStateChangeRe.MatchString(cmd) {
-			return nil // nothing worth recording
+			return // nothing worth recording
 		}
 		rec.Trigger = "commit"
 		rec.Command = model.Clip(cmd, 300)
@@ -463,7 +485,21 @@ func RunHookEvent(event string, stdin io.Reader) error {
 	if err := hooklog.Append(hooklog.DefaultDir(), rec); err != nil {
 		logHookError(fmt.Errorf("claudecode: append hook record: %w", err))
 	}
-	return nil
+}
+
+// triggerPublish starts `paircli publish` for a successful `gh pr create` or
+// `git push` on a PR branch and prints the one JSON object the agent shows.
+// It prints nothing for any other command.
+func triggerPublish(payload hookStdinPayload) {
+	ev := prtrigger.Event{
+		ToolName: payload.ToolName,
+		Command:  extractBashCommand(payload.ToolInput),
+		CWD:      payload.CWD,
+		Response: payload.ToolResponse,
+	}
+	if err := prRunner.Run(ev, hookStdout); err != nil {
+		logHookError(fmt.Errorf("claudecode: start publish: %w", err))
+	}
 }
 
 // extractBashCommand reads "command" out of a Bash tool_input payload.

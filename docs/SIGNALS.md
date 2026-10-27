@@ -104,7 +104,7 @@ Easy to compute, deliberately excluded:
 
 ## Deferred
 
-- **Redaction** of secrets and private text in stored or posted output. Until
-  it lands: `internal/redact.Text` is a no-op seam every renderer calls,
-  `comment.md` never includes prompt text unless `comment.include_prompts`
-  is set, and the LLM pass is off by default.
+- **Redaction of private text that is not secret-shaped.** Secrets are
+  redacted (`internal/redact`, see CONFIGURATION.md), but names, code and
+  prose are not. `comment.md` never includes prompt text unless
+  `comment.include_prompts` is set, and the LLM pass is off by default.

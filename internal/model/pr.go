@@ -10,6 +10,7 @@ type PR struct {
 	Title     string     `json:"title"`
 	Body      string     `json:"body"`
 	HeadRef   string     `json:"head_ref"`
+	HeadSHA   string     `json:"head_sha,omitempty"` // GitHub's headRefOid: the true head, even past the commit-list cap
 	BaseRef   string     `json:"base_ref"`
 	CreatedAt time.Time  `json:"created_at"`
 	Commits   []Commit   `json:"commits"`

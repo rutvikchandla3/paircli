@@ -77,9 +77,58 @@ it for that run only. Run `paircli --help` for the full flag list (including
   nothing else, so a replay elsewhere sends exactly what a scan with `--llm`
   would have.
 
-**Redaction is not implemented yet.** The seam exists (`internal/redact.Text`)
-but is a no-op, so stored and posted text can contain secrets that appeared
-in the sessions. EXP-4 reports secret-shaped matches masked, and
-`comment.md` never includes prompt text unless you set `comment.include_prompts`
-(or pass `--include-prompts`) — until real redaction lands, those are the
-compensating defaults.
+**What `paircli publish` uploads.** One zip per PR head, to Pair's S3 through a
+presigned URL Pair issues for your login:
+
+- `bundle.json`: the repo, PR number, head, the redaction summary (rules
+  version and how many matches of each kind were removed) and whether raw
+  sessions are included.
+- `.paircli/pr-<n>/<head>/`: `report.md`, `comment.md`, `signals.json`,
+  `authorship.json`, `snapshot.json`, `agent-trace.json` and `sessions/*.json`
+  from the scan. `snapshot.json` and the session files carry the normalized
+  session timelines: prompts, commands, tool results and file edits.
+- `raw-sessions/`: the Claude Code (main, resumed and subagent files) and
+  Codex transcript bytes that are new since the last publication of that PR,
+  with a manifest of source offsets and SHA-256s. At most 80 MiB per
+  publication; a range that does not fit is skipped with a note in the log,
+  and a bundle that would pass 100 MiB leaves the raw sessions out.
+
+Files in the scan folder that are not on that list are never uploaded. The
+upload happens only through `paircli publish` (run by hand or started by the
+installed hooks); `--dry-run` shows the bundle without sending it. Publishing
+also posts one comment with the pair.sh link on the PR (skip it with
+`--no-comment`) and sends a desktop notification.
+
+## Redaction
+
+Everything `paircli publish` uploads, and every string the reports render,
+goes through `internal/redact` (rules version `1`). A match is replaced by
+`[REDACTED:<kind>]`; redacting twice changes nothing. The kinds:
+
+| Kind | What it matches |
+|---|---|
+| `github_token` | `ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` and `github_pat_` tokens |
+| `api_key` | `sk-` keys (at least 20 characters with a digit or capital, so slugs are left alone) |
+| `aws_access_key` | `AKIA` / `ASIA` access key ids |
+| `aws_secret` | the value of `aws_secret_access_key = ...` |
+| `slack_token` | `xoxb-`, `xoxp-`, `xoxa-`, `xoxs-`, `xoxr-`, `xoxo-`, `xapp-` tokens |
+| `jwt` | three-part `eyJ...` JSON web tokens |
+| `bearer` | the credential in `Authorization: Bearer ...` and `Authorization: Basic ...` |
+| `private_key` | whole `-----BEGIN ... PRIVATE KEY-----` blocks |
+| `secret_assignment` | the value in `api_key`, `token`, `secret`, `password` or `passwd` assignments (`name = value`, `name: "value"`, JSON, URL query) |
+| `env_secret` | the exact value of this process's environment variables whose names contain `KEY`, `TOKEN`, `SECRET`, `PASSWORD`, `PASSWD`, `AUTH`, `CREDENTIAL` or `COOKIE` |
+| `npm_token` | the `_authToken=` values in `~/.npmrc` |
+
+Generic assignments redact only values that look like secrets: at least 8
+characters, not a path, URL, boolean, number, placeholder (`$VAR`, `<token>`,
+`xxxx`, `YOUR_API_KEY`), plain word or code expression (`config.token`,
+`getToken()`). Environment values count only when they are at least 12
+characters and not a path, URL or boolean; `GIT_AUTHOR_*` is not mistaken for
+`AUTH`. Raw transcripts are redacted line by line, so one match can never join
+two JSONL lines.
+
+Redaction is pattern based and best effort. It does not find secrets that
+have no recognizable shape, and it does not remove names, code or prose.
+`comment.md` never includes prompt text unless you set
+`comment.include_prompts` (or pass `--include-prompts`), and EXP-4 reports
+secret-shaped matches masked.

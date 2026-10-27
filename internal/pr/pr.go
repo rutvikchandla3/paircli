@@ -55,6 +55,7 @@ type ghPRView struct {
 	Title       string          `json:"title"`
 	Body        string          `json:"body"`
 	HeadRefName string          `json:"headRefName"`
+	HeadRefOid  string          `json:"headRefOid"`
 	BaseRefName string          `json:"baseRefName"`
 	CreatedAt   string          `json:"createdAt"`
 	Commits     []ghCommitEntry `json:"commits"`
@@ -83,7 +84,7 @@ var apiStatusMap = map[string]model.FileStatus{
 // maxCommitPatches commits).
 func Fetch(r Runner, repo string, number int, withCommitPatches bool) (*model.PR, error) {
 	out, err := r.Run("pr", "view", strconv.Itoa(number), "-R", repo,
-		"--json", "number,url,title,body,headRefName,baseRefName,createdAt,commits")
+		"--json", "number,url,title,body,headRefName,headRefOid,baseRefName,createdAt,commits")
 	if err != nil {
 		return nil, fmt.Errorf("pr: gh pr view: %w", err)
 	}
@@ -99,6 +100,7 @@ func Fetch(r Runner, repo string, number int, withCommitPatches bool) (*model.PR
 		Title:   raw.Title,
 		Body:    raw.Body,
 		HeadRef: raw.HeadRefName,
+		HeadSHA: strings.ToLower(strings.TrimSpace(raw.HeadRefOid)),
 		BaseRef: raw.BaseRefName,
 	}
 	if t, err := time.Parse(time.RFC3339, raw.CreatedAt); err == nil {
@@ -268,4 +270,20 @@ func ResolveArg(cwd, arg string) (repo string, number int, err error) {
 		return "", 0, fmt.Errorf("pr: could not determine owner/repo from git remote; pass a full PR URL instead")
 	}
 	return info.OwnerRepo, n, nil
+}
+
+var headSHARe = regexp.MustCompile(`^[0-9a-f]{40}$`)
+
+// HeadSHA returns the PR's current head commit (headRefOid) with one cheap
+// `gh` call, without fetching the diff or commits.
+func HeadSHA(r Runner, repo string, number int) (string, error) {
+	out, err := r.Run("pr", "view", strconv.Itoa(number), "-R", repo, "--json", "headRefOid", "--jq", ".headRefOid")
+	if err != nil {
+		return "", fmt.Errorf("pr: gh pr view: %w", err)
+	}
+	sha := strings.ToLower(strings.TrimSpace(string(out)))
+	if !headSHARe.MatchString(sha) {
+		return "", fmt.Errorf("pr: GitHub returned an invalid head %q", sha)
+	}
+	return sha, nil
 }

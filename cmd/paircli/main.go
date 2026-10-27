@@ -4,6 +4,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 )
@@ -25,6 +26,12 @@ func main() {
 		err = runJudge(os.Args[2:])
 	case "hook":
 		err = runHook(os.Args[2:])
+	case "publish":
+		err = runPublish(os.Args[2:])
+	case "setup":
+		err = runSetup(os.Args[2:])
+	case "status":
+		err = runStatus(os.Args[2:])
 	case "login":
 		err = runLogin(os.Args[2:])
 	case "logout":
@@ -47,6 +54,10 @@ func main() {
 
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "paircli: %v\n", err)
+		var coded interface{ ExitCode() int }
+		if errors.As(err, &coded) {
+			os.Exit(coded.ExitCode())
+		}
 		os.Exit(1)
 	}
 }
@@ -59,6 +70,9 @@ Usage:
                                             signal pipeline, write the output folder
   paircli judge <snapshot.json> [flags]     run the grounded LLM pass over a scan's
                                             snapshot and rewrite its report files
+  paircli publish <pr-number-or-url> [flags]  scan, redact, package and publish a PR's evidence to Pair
+  paircli setup [flags]                     install hooks, update the CLI and log in (idempotent)
+  paircli status [flags]                    show login, hooks and the state of recent publications
   paircli hook install [harness]            install hooks; with no harness, every one
                                             detected on this machine (claude-code | codex | pi)
   paircli hook uninstall [harness]          remove hooks; with no harness, all installed ones
@@ -91,8 +105,26 @@ judge flags:
   --force                 replay even if another paircli version wrote the snapshot
   --json                  print signals.json to stdout
 
+publish flags:
+  --repo-dir DIR          repository directory (default: the current directory)
+  --wait                  wait for Pair's analysis of the publication to finish
+  --timeout DUR           how long --wait waits (default 20m)
+  --dry-run               build the bundle and print the plan; publish nothing
+  --no-comment            do not post the Pair link comment on the PR
+  --json                  print the result as JSON
+
+setup flags:
+  --harness NAME          claude-code | codex | pi (default: every detected harness)
+  --plugin-version VER    Pair plugin version (used by the plugin integration)
+  --no-login              skip the device login
+  --json                  print the result as JSON
+
+status flags:
+  --json                  print the status as JSON
+  --pr URL                show only this pull request's publication (GitHub URL)
+
 login flags:
-  --server URL            backend base URL (default $PAIRCLI_SERVER_URL or the built-in one)
+  --server URL           backend base URL (default $PAIRCLI_SERVER_URL or the built-in one)
   --no-browser            do not open the browser automatically
   --timeout DUR           overall time to wait for authorization (default 15m)
   --json                  print the device code payload to stdout

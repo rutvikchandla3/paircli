@@ -62,6 +62,14 @@ type Result struct {
 	OutDir string
 	Alerts int // signals whose State is alert
 
+	// Head is the PR head commit the folder is named after, lowercase; ""
+	// when the PR carried none.
+	Head string
+
+	// Sessions are the sessions linked to the PR, with their SourcePath: what
+	// raw-session capture reads. Detector results never mutate them.
+	Sessions []*model.Session
+
 	// LLMErrors says what the grounded judge could not do: one entry per job
 	// that produced nothing usable, and empty when the pass was clean or did
 	// not run. A failed pass leaves the deterministic report in place and is
@@ -205,14 +213,35 @@ func Run(ctx context.Context, o Options) (*Result, error) {
 		}
 	}
 
-	return &Result{Report: rep, OutDir: outDir, Alerts: alertCount(sigs), LLMErrors: llmErrors}, nil
+	return &Result{
+		Report:    rep,
+		OutDir:    outDir,
+		Alerts:    alertCount(sigs),
+		Head:      headSHA(p),
+		Sessions:  res.Sessions,
+		LLMErrors: llmErrors,
+	}, nil
 }
 
-func artifactCommitDir(pr *model.PR) string {
-	if pr == nil || len(pr.Commits) == 0 {
-		return "no-commit"
+// headSHA is the PR's true head (headRefOid), lowercase, because GitHub caps
+// the commit list and its last entry may not be the head. The last commit is
+// the fallback for a payload that carries no head; "" when there is neither.
+func headSHA(pr *model.PR) string {
+	if pr == nil {
+		return ""
 	}
-	sha := strings.ToLower(strings.TrimSpace(pr.Commits[len(pr.Commits)-1].SHA))
+	if sha := strings.ToLower(strings.TrimSpace(pr.HeadSHA)); sha != "" {
+		return sha
+	}
+	if len(pr.Commits) == 0 {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(pr.Commits[len(pr.Commits)-1].SHA))
+}
+
+// artifactCommitDir names the output folder's commit level after the PR head.
+func artifactCommitDir(pr *model.PR) string {
+	sha := headSHA(pr)
 	if sha == "" {
 		return "no-commit"
 	}

@@ -129,6 +129,17 @@ func (e *Error) Error() string {
 
 func (e *Error) Unwrap() error { return e.cause }
 
+// CodeAuthorizationRequired is the code Pair answers a 403 with when the user
+// has not authorized the Pair GitHub App for the repository. Only the user can
+// fix it, on the PR's page on pair.sh.
+const CodeAuthorizationRequired = "GITHUB_AUTHORIZATION_REQUIRED"
+
+// AuthorizationRequired reports whether the user must authorize the Pair
+// GitHub App before this request can succeed.
+func (e *Error) AuthorizationRequired() bool {
+	return e.Status == http.StatusForbidden && e.Code == CodeAuthorizationRequired
+}
+
 // Transient reports whether retrying the same request may succeed.
 func (e *Error) Transient() bool {
 	switch e.Status {

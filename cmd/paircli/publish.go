@@ -508,7 +508,7 @@ func (p *publisher) upload(ctx context.Context, client *publish.Client, server s
 		Finalizing: func() { p.step(state.StepFinalize) },
 	})
 	if err != nil {
-		return p.fail(err)
+		return p.fail(p.withAuthorizationLink(err))
 	}
 
 	fin := sent.Finalized
@@ -532,6 +532,19 @@ func (p *publisher) upload(ctx context.Context, client *publish.Client, server s
 		}
 	}
 	return p.printResult(revision)
+}
+
+// withAuthorizationLink adds where to authorize the Pair GitHub App when Pair
+// refused the publication for that reason. The link is built from the PR's
+// owner, repo and number, never from the response: pair.sh's PR page is where
+// the user is prompted to authorize.
+func (p *publisher) withAuthorizationLink(err error) error {
+	var apiErr *publish.Error
+	if !errors.As(err, &apiErr) || !apiErr.AuthorizationRequired() {
+		return err
+	}
+	return fmt.Errorf("%w; authorize the Pair GitHub App for %s/%s at %s, then publish again",
+		err, p.owner, p.repo, state.ReviewURL(p.owner, p.repo, p.number))
 }
 
 // commitCursors advances the capture cursors now that the bundle is stored. A

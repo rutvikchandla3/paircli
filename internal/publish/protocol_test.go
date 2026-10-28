@@ -540,6 +540,40 @@ func TestFinalizeGivesUpAfterThreeRetries(t *testing.T) {
 	}
 }
 
+func TestAuthorizationRequiredNeedsA403WithTheCode(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		body string
+		want bool
+		code string
+	}{
+		{"error envelope", `{"error":{"code":"GITHUB_AUTHORIZATION_REQUIRED","details":{"authorization_url":"/github/authorize?installation_id=1"}}}`, true, "GITHUB_AUTHORIZATION_REQUIRED"},
+		{"top-level code", `{"code":"GITHUB_AUTHORIZATION_REQUIRED"}`, true, "GITHUB_AUTHORIZATION_REQUIRED"},
+		{"other code", `{"code":"GITHUB_ACCESS_DENIED"}`, false, "GITHUB_ACCESS_DENIED"},
+		{"no code", `{}`, false, ""},
+		{"malformed code", `{"code":"GITHUB_AUTHORIZATION_REQUIRED please visit evil.example"}`, false, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := newFakeAPI(t)
+			api.on("POST", reservePath, reply{http.StatusForbidden, tc.body})
+			_, err := newTestClient(t, api, &fakeS3{}).Reserve(context.Background(), testMeta())
+			var apiErr *Error
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("err = %v", err)
+			}
+			if apiErr.Code != tc.code || apiErr.AuthorizationRequired() != tc.want {
+				t.Errorf("code = %q, AuthorizationRequired = %v; want %q, %v", apiErr.Code, apiErr.AuthorizationRequired(), tc.code, tc.want)
+			}
+			if strings.Contains(err.Error(), "evil.example") || strings.Contains(err.Error(), "/github/authorize") {
+				t.Errorf("error echoes server text: %v", err)
+			}
+		})
+	}
+	if (&Error{Status: http.StatusUnauthorized, Code: CodeAuthorizationRequired}).AuthorizationRequired() {
+		t.Error("a 401 is not an authorization-required refusal")
+	}
+}
+
 func TestFinalizeDoesNotRetryAuthOrConflict(t *testing.T) {
 	for _, status := range []int{401, 403, 409, 404, 400} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {

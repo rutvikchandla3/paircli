@@ -136,6 +136,7 @@ type pubAPI struct {
 	paths          []string
 	meta           publish.Metadata
 	finalizeStatus int
+	finalizeBody   string // error body for a finalizeStatus of 400 or more; defaults to a CONFLICT code
 	analysis       []string
 	heads          []string // head_sha of every reservation, in order
 	be             *beMain  // when set, answers like the Pair backend's main branch
@@ -186,7 +187,11 @@ func (a *pubAPI) handle(w http.ResponseWriter, r *http.Request) {
 	case strings.HasSuffix(r.URL.Path, "/finalize"):
 		if a.finalizeStatus >= 400 {
 			w.WriteHeader(a.finalizeStatus)
-			io.WriteString(w, `{"code":"CONFLICT"}`)
+			body := a.finalizeBody
+			if body == "" {
+				body = `{"code":"CONFLICT"}`
+			}
+			io.WriteString(w, body)
 			return
 		}
 		reply(a.finalizeStatus, map[string]any{
@@ -553,6 +558,38 @@ func TestPublishFailureIsRecordedAndCursorsStay(t *testing.T) {
 	}
 	if len(h.notices) != 1 || !strings.HasPrefix(h.notices[0], "Pair review failed") {
 		t.Errorf("notices = %q", h.notices)
+	}
+}
+
+func TestPublishAuthorizationRequiredPointsAtThePRPage(t *testing.T) {
+	h := newPubHarness(t)
+	h.api.finalizeStatus = http.StatusForbidden
+	h.api.finalizeBody = `{"error":{"code":"GITHUB_AUTHORIZATION_REQUIRED","message":"private provider detail",` +
+		`"details":{"authorization_url":"https://evil.example/steal"}}}`
+	err := h.run()
+	if err == nil {
+		t.Fatal("a refused finalize must fail the run")
+	}
+	for _, got := range []string{err.Error(), h.record().Error} {
+		if !strings.Contains(got, "authorize the Pair GitHub App for acme/shop at https://pair.sh/acme/shop/pull/7") ||
+			!strings.Contains(got, "[GITHUB_AUTHORIZATION_REQUIRED]") {
+			t.Errorf("message lacks the authorization link: %q", got)
+		}
+		if strings.Contains(got, "evil.example") || strings.Contains(got, "private provider detail") {
+			t.Errorf("message echoes server text: %q", got)
+		}
+	}
+}
+
+func TestPublishOtherForbiddenCodesGetNoAuthorizationLink(t *testing.T) {
+	for _, body := range []string{`{"code":"GITHUB_ACCESS_DENIED"}`, `{}`, `not json`, `{"code":"has space"}`} {
+		h := newPubHarness(t)
+		h.api.finalizeStatus = http.StatusForbidden
+		h.api.finalizeBody = body
+		err := h.run()
+		if err == nil || strings.Contains(err.Error(), "authorize the Pair GitHub App") {
+			t.Errorf("body %s: err = %v", body, err)
+		}
 	}
 }
 

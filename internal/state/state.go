@@ -315,3 +315,81 @@ func TakePending(key string) (PendingRequest, bool) {
 	}
 	return req, true
 }
+
+// Latest is the record of which run's upload is the newest for a PR. A run
+// writes it right after its upload is stored, and a run still following an
+// older upload sees the token change and stops.
+type Latest struct {
+	Token         string    `json:"token"`
+	PublicationID string    `json:"publication_id"`
+	HeadSHA       string    `json:"head_sha"`
+	ClaimedAt     time.Time `json:"claimed_at"`
+}
+
+func latestPath(key string) string { return filepath.Join(Dir(), "latest", key+".json") }
+
+// latestGuardWait bounds how long ClaimLatest and WithLatest wait for the
+// guard lock.
+const latestGuardWait = 2 * time.Second
+
+// lockLatest takes the lock that makes "check the token, then act" and
+// "replace the token" exclusive. It is only held for a file read or write and
+// the short function the caller passes, and the kernel drops it with its
+// process, so a crash cannot leave it taken.
+func lockLatest(key string) *Lock {
+	lock, err := WaitLock(key+".latest", latestGuardWait)
+	if err != nil {
+		return nil // unguarded beats stuck: the token check still decides
+	}
+	return lock
+}
+
+// ClaimLatest makes l the PR's newest upload and, while still holding the
+// guard, calls whileHeld, so that whatever whileHeld writes (the publication
+// record) lands after the token changes and an older follower cannot overwrite
+// it. whileHeld is called even when the token could not be written, whose error
+// is returned.
+func ClaimLatest(key string, l Latest, whileHeld func()) error {
+	lock := lockLatest(key)
+	defer lock.Release()
+	if l.ClaimedAt.IsZero() {
+		l.ClaimedAt = time.Now().UTC()
+	}
+	err := WriteJSONAtomic(latestPath(key), l)
+	if whileHeld != nil {
+		whileHeld()
+	}
+	return err
+}
+
+// IsLatest reports whether token still names the PR's newest upload. An empty
+// token (the claim could not be written), a missing record and an unreadable
+// one all count as latest: with nothing to compare, a follower carries on
+// rather than going quiet for good.
+func IsLatest(key, token string) bool {
+	if token == "" {
+		return true
+	}
+	data, err := os.ReadFile(latestPath(key))
+	if err != nil {
+		return true
+	}
+	var l Latest
+	if json.Unmarshal(data, &l) != nil || l.Token == "" {
+		return true
+	}
+	return l.Token == token
+}
+
+// WithLatest runs fn only if token is still the PR's newest upload, holding
+// the guard so that no newer upload is claimed meanwhile. It reports whether
+// fn ran.
+func WithLatest(key, token string, fn func()) bool {
+	lock := lockLatest(key)
+	defer lock.Release()
+	if !IsLatest(key, token) {
+		return false
+	}
+	fn()
+	return true
+}

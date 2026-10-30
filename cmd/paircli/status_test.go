@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -162,11 +164,79 @@ func TestStatus_HumanOutput(t *testing.T) {
 	if err := statusRun(nil, &out); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"not logged in", "claude-code no", "setup:  idle", "five-sh/awt#12", "processing", "https://pair.sh/five-sh/awt/pull/12"} {
+	for _, want := range []string{"not logged in", "claude-code no", "setup:  idle", "five-sh/awt#12", "uploaded", "https://pair.sh/five-sh/awt/pull/12"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("output lacks %q:\n%s", want, out.String())
 		}
 	}
+	if strings.Contains(out.String(), "processing") {
+		t.Errorf("output speaks of processing:\n%s", out.String())
+	}
+}
+
+// `paircli status` says what the publisher did, never where Pair's analysis
+// stands: no analysis state, no error code, no "failed" for the analysis.
+func TestStatus_HumanOutputIsNeutralAboutTheAnalysis(t *testing.T) {
+	setupEnv(t)
+	records := []state.Publication{
+		{Number: 1, State: state.StateProcessing, Step: state.StepAnalysis, AnalysisState: "running"},
+		{Number: 2, State: state.StateReady, Step: state.StepAnalysis, AnalysisState: "succeeded"},
+		{Number: 3, State: state.StateReady, Step: state.StepAnalysis, AnalysisState: "failed"},
+		// What an earlier paircli left behind for a failed analysis.
+		{Number: 4, State: state.StateFailed, Step: state.StepAnalysis, AnalysisState: "failed", Error: "the analysis failed (model_unavailable)", Log: "/logs/p4.log"},
+	}
+	for _, p := range records {
+		p.Owner, p.Repo, p.ReviewURL = "o", "r", state.ReviewURL("o", "r", p.Number)
+		if err := state.WritePublication(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out bytes.Buffer
+	if err := statusRun(nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, banned := range []string{"analysis", "failed", "model_unavailable", "error:", "log:", "processing", "running", "succeeded"} {
+		if strings.Contains(strings.ToLower(out.String()), banned) {
+			t.Errorf("output mentions %q:\n%s", banned, out.String())
+		}
+	}
+	for number, want := range map[int]string{1: "uploaded", 2: "ready", 3: "ready", 4: "ready"} {
+		line := lineWith(out.String(), fmt.Sprintf("o/r#%d ", number))
+		if !strings.Contains(line, want) {
+			t.Errorf("PR %d line = %q, want %q", number, line, want)
+		}
+	}
+}
+
+// A run that stopped before the upload completed is still reported as failed,
+// with its step, error and log.
+func TestStatus_HumanOutputKeepsRealFailures(t *testing.T) {
+	setupEnv(t)
+	err := state.WritePublication(state.Publication{
+		Owner: "o", Repo: "r", Number: 1, State: state.StateFailed, Step: state.StepFinalize,
+		Error: "Pair rejected the publication", Log: "/logs/p1.log", ReviewURL: state.ReviewURL("o", "r", 1),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := statusRun(nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"failed (finalize)", "error: Pair rejected the publication", "log: /logs/p1.log"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+}
+
+func lineWith(text, sub string) string {
+	for _, line := range strings.Split(text, "\n") {
+		if strings.Contains(line, sub) {
+			return line
+		}
+	}
+	return ""
 }
 
 // --- analysis refresh ---
@@ -240,16 +310,35 @@ func TestStatusRefresh_SucceededBecomesReady(t *testing.T) {
 	}
 }
 
-func TestStatusRefresh_FailedRecordsTheErrorCode(t *testing.T) {
+func TestStatusRefresh_FailedBecomesReadyAndTheCodeGoesToTheLog(t *testing.T) {
 	setupEnv(t)
+	logPath := filepath.Join(t.TempDir(), "publish.log")
+	if err := os.WriteFile(logPath, []byte("earlier line\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	writeProcessing(t, 1, "pub-1")
+	p := storedPublication(t, 1)
+	p.Log = logPath
+	if err := state.WritePublication(p); err != nil {
+		t.Fatal(err)
+	}
 	code := "model_timeout"
 	useAnalysis(t, &fakeAnalysis{answers: map[string]*publish.Analysis{"pub-1": analysis(publish.AnalysisFailed, &code)}})
 
-	statusJSON(t)
+	var out bytes.Buffer
+	if err := statusRun(nil, &out); err != nil {
+		t.Fatal(err)
+	}
 	stored := storedPublication(t, 1)
-	if stored.State != state.StateFailed || stored.Error != "the analysis failed (model_timeout)" {
-		t.Errorf("stored record = %+v, want failed with the code", stored)
+	if stored.State != state.StateReady || stored.Error != "" {
+		t.Errorf("stored record = %+v, want ready with no error", stored)
+	}
+	if strings.Contains(out.String(), code) || strings.Contains(out.String(), "failed") {
+		t.Errorf("status output shows the failure:\n%s", out.String())
+	}
+	log, _ := os.ReadFile(logPath)
+	if !strings.HasPrefix(string(log), "earlier line\n") || !strings.Contains(string(log), "analysis failed (model_timeout)") {
+		t.Errorf("log = %q, want the code appended", log)
 	}
 }
 

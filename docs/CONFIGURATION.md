@@ -116,7 +116,8 @@ Files in the scan folder that are not on that list are never uploaded. The
 upload happens only through `paircli publish` (run by hand or started by the
 installed hooks); `--dry-run` shows the bundle without sending it. Publishing
 also posts one comment with the pair.sh link on the PR (skip it with
-`--no-comment`) and sends a desktop notification.
+`--no-comment`) and sends a desktop notification (`PR #<n> uploaded to Pair`,
+and with `--wait`, which the hooks pass, `Pair review ready` when it is).
 
 ## Redaction
 

@@ -73,11 +73,20 @@ updated first; `--pr` keeps only one PR's.
 
 A publication that is still `uploaded` or `processing` is refreshed first: for
 up to five of them, `status` asks the server for the analysis state (3 second
-limit each) and saves the answer into the record (`succeeded` is `ready`,
-`failed` is `failed` with the error code, `queued` and `running` stay
-`processing`). This is how a publish run without `--wait`, or past its
-`--wait` timeout, ends up `ready` or `failed`. When you are not logged in or
-the server cannot be reached, the stored record is shown unchanged.
+limit each) and saves the answer into the record (`succeeded` and `failed` are
+both `ready`, `queued` and `running` stay `processing`; a failed job's error
+code is appended to the publication's log file and shown nowhere else). This
+is how a publish run without `--wait` ends up `ready`. When you are not logged
+in or the server cannot be reached, the stored record is shown unchanged.
+
+The human output speaks only of what the publisher did, one line per PR:
+`running (<step>)`, `uploaded` (the evidence is stored; the record's
+`processing` also reads `uploaded`), `ready`, or `failed (<step>)` with the
+error and log for a run that stopped before its upload was complete. It never
+shows an analysis state or an analysis error code, and a record an earlier
+version left as failed at the analysis step reads `ready`. `--json` prints the
+stored records as they are, including `analysis_job_id` and
+`analysis_state`.
 
 ## Hooks that publish
 
@@ -88,7 +97,7 @@ Claude Code and Codex. Besides recording git state changes, it watches for:
 - a successful `git push` of the current branch while it has an open PR
   (`gh pr view` in the command's directory, 3 second limit).
 
-It then starts `paircli publish <pr-url> --repo-dir <dir>` detached, in its
+It then starts `paircli publish <pr-url> --repo-dir <dir> --wait` detached, in its
 own session, with stdout and stderr in
 `~/.paircli/logs/publish-<owner>__<repo>__<n>-<time>.log`, and prints one JSON
 object so the agent and the user see where the review will appear:
@@ -110,7 +119,13 @@ Repeated pushes are safe: `paircli publish` takes a per-PR lock. A publish
 started while another one is running for the PR leaves a marker
 (`~/.paircli/state/locks/<owner>__<repo>__<n>.pending`) and exits; the running
 one publishes again when it finishes (up to 3 extra times), so the newest head
-is never skipped.
+is never skipped. The lock is held only until the upload is stored: the
+detached `--wait` that follows runs without it, so a push while it waits
+publishes at once, and that newer publish ends the older run's wait without a
+notification (the older run notifies for nothing; the newer one does, once its
+review is ready). A hook-started publish sends two notifications:
+`PR #<n> uploaded to Pair` after the upload and `Pair review ready` (the review
+URL in the text) when the review is ready.
 
 ## Where things live
 

@@ -72,15 +72,12 @@ type Finalized struct {
 
 // Analysis is the state of a publication's analysis job.
 type Analysis struct {
-	PublicationID   string  `json:"publication_id"`
-	JobID           string  `json:"job_id"`
-	State           string  `json:"state"`
-	PipelineVersion string  `json:"pipeline_version"`
-	AttemptCount    int     `json:"attempt_count"`
-	MaxAttempts     int     `json:"max_attempts"`
-	ErrorCode       *string `json:"error_code"`
-	UpdatedAt       string  `json:"updated_at"`
-	CompletedAt     *string `json:"completed_at"`
+	PublicationID string  `json:"publication_id"`
+	JobID         string  `json:"job_id"`
+	State         string  `json:"state"`
+	ErrorCode     *string `json:"error_code"`
+	UpdatedAt     string  `json:"updated_at"`
+	CompletedAt   *string `json:"completed_at"`
 }
 
 // Done reports whether the job has reached a final state.

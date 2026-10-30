@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -82,8 +84,8 @@ func parsePublishArgs(args []string) (publishArgs, error) {
 	fs := flag.NewFlagSet("publish", flag.ContinueOnError)
 	fs.SetOutput(io.Discard) // the caller reports parse errors itself
 	fs.StringVar(&a.RepoDir, "repo-dir", "", "repository directory (default: the current directory)")
-	fs.BoolVar(&a.Wait, "wait", false, "wait for Pair's analysis of the publication to finish")
-	fs.DurationVar(&a.Timeout, "timeout", defaultAnalysisTimeout, "how long --wait waits for the analysis")
+	fs.BoolVar(&a.Wait, "wait", false, "wait until the published review is ready")
+	fs.DurationVar(&a.Timeout, "timeout", defaultAnalysisTimeout, "how long --wait waits")
 	fs.BoolVar(&a.DryRun, "dry-run", false, "build the bundle and print the plan; change nothing remote")
 	fs.BoolVar(&a.NoComment, "no-comment", false, "do not post the Pair link comment on the PR")
 	fs.BoolVar(&a.JSON, "json", false, "print the result as JSON on stdout")
@@ -173,6 +175,11 @@ type publisher struct {
 	logOut  io.Writer
 
 	appendLog bool // a rerun adds to the log instead of replacing it
+
+	client   *publish.Client
+	uploaded bool   // the bundle is stored on Pair
+	revision int64  // of that upload
+	token    string // names this run's upload in state.Latest; "" when the claim could not be written
 }
 
 // maxReruns is how many extra full runs one process makes for pushes that
@@ -180,14 +187,20 @@ type publisher struct {
 const maxReruns = 3
 
 // publishRun publishes one PR's evidence: scan, capture, package, upload,
-// finalize, comment, notify and optionally wait for the analysis.
+// finalize, comment, notify and, with --wait, follow the review until it is
+// ready.
 //
-// At most one run per PR is active. A run that finds the PR's lock taken
+// At most one run per PR is publishing. A run that finds the PR's lock taken
 // leaves a pending marker and exits successfully; the run holding the lock,
 // once its steps are done and while it still holds the lock, takes the marker
 // and runs the whole pipeline again (which resolves the head afresh, so a push
 // made mid-run is published), at most maxReruns times. A rerun whose head has
 // not changed since a successful run does nothing.
+//
+// The lock covers the publishing only: it is released as soon as the last
+// upload is stored, before --wait follows the review, so a push during that
+// wait publishes at once instead of leaving a marker. A newer upload of the
+// same PR ends the older run's wait (see state.Latest).
 func publishRun(ctx context.Context, env publishEnv, a publishArgs) error {
 	dir := a.RepoDir
 	if dir == "" {
@@ -214,30 +227,30 @@ func publishRun(ctx context.Context, env publishEnv, a publishArgs) error {
 
 	reruns := 0
 	for {
-		var runErr error
-		for {
-			p := &publisher{env: env, args: a, owner: owner, repo: repo, number: number, dir: dir, appendLog: reruns > 0}
-			p.openLog()
-			runErr = p.run(ctx)
-			again := reruns < maxReruns && ctx.Err() == nil && p.rerunWanted(key, runErr)
+		p := &publisher{env: env, args: a, owner: owner, repo: repo, number: number, dir: dir, appendLog: reruns > 0}
+		p.openLog()
+		runErr := p.run(ctx)
+		if reruns < maxReruns && ctx.Err() == nil && p.rerunWanted(key, runErr) {
 			p.closeLog()
-			if !again {
-				break
-			}
 			reruns++
+			continue
 		}
 		lock.Release()
 
 		// A push can land between the last marker check and the release; its
 		// run found the lock taken, left a marker and gave up.
-		if a.DryRun || reruns >= maxReruns || ctx.Err() != nil || !state.HasPending(key) {
-			return runErr
+		if !a.DryRun && reruns < maxReruns && ctx.Err() == nil && state.HasPending(key) {
+			// A lock taken by someone else means another run owns the PR now
+			// and will take the marker.
+			if relock, lockErr := state.TryLock(key); lockErr == nil {
+				state.TakePending(key)
+				lock = relock
+				p.closeLog()
+				reruns++
+				continue
+			}
 		}
-		if lock, err = state.TryLock(key); err != nil {
-			return runErr // another run owns the PR now and will take the marker
-		}
-		state.TakePending(key)
-		reruns++
+		return p.finish(ctx, runErr)
 	}
 }
 
@@ -308,7 +321,9 @@ func (p *publisher) openLog() {
 		return
 	}
 	path := filepath.Join(dir, "publish-"+state.Key(p.owner, p.repo, p.number)+".log")
-	mode := os.O_CREATE | os.O_WRONLY | os.O_TRUNC
+	// O_APPEND even for the truncating open: an older run still following its
+	// review keeps this file open and must not write at its old offset.
+	mode := os.O_CREATE | os.O_WRONLY | os.O_APPEND | os.O_TRUNC
 	if p.appendLog {
 		mode = os.O_CREATE | os.O_WRONLY | os.O_APPEND
 	}
@@ -330,6 +345,18 @@ func (p *publisher) closeLog() {
 func (p *publisher) logf(format string, args ...any) {
 	fmt.Fprintf(p.logOut, "%s paircli publish: %s\n", p.env.now().Format("15:04:05"), fmt.Sprintf(format, args...))
 }
+
+// detailf writes a line to the run's log file only, never to the terminal: it
+// is for what concerns Pair's background work, which the publisher is not
+// told about.
+func (p *publisher) detailf(format string, args ...any) {
+	if p.logFile == nil {
+		return
+	}
+	fmt.Fprintf(p.logFile, "%s paircli publish: %s\n", p.env.now().Format("15:04:05"), fmt.Sprintf(format, args...))
+}
+
+func (p *publisher) key() string { return state.Key(p.owner, p.repo, p.number) }
 
 // save writes the publication record. A dry run leaves the real record alone,
 // and a failed write is logged, never fatal.
@@ -486,6 +513,7 @@ func (p *publisher) connect() (string, *publish.Client, error) {
 	if err != nil {
 		return "", nil, p.fail(err)
 	}
+	p.client = client
 	return server, client, nil
 }
 
@@ -518,20 +546,36 @@ func (p *publisher) upload(ctx context.Context, client *publish.Client, server s
 	if fin.AnalysisJobID != "" {
 		p.rec.State, p.rec.Step = state.StateProcessing, state.StepAnalysis
 	}
-	p.save()
+	p.claimLatest()
 	p.logf("published revision %d as %s (content version %d)", revision, fin.PublicationID, fin.ContentVersion)
 
 	p.commitCursors(staged, bundle)
 	p.comment()
-	p.env.notify("Pair review ready", fmt.Sprintf("PR #%d evidence uploaded. %s", p.number, p.rec.ReviewURL))
+	p.env.notify(fmt.Sprintf("PR #%d uploaded to Pair", p.number), p.rec.ReviewURL)
 	p.logf("review: %s", p.rec.ReviewURL)
 
+	p.uploaded, p.revision = true, revision
 	if p.args.Wait {
-		if err := p.waitAnalysis(ctx, client); err != nil {
-			return err
-		}
+		return nil // publishRun follows once it has released the PR's lock
 	}
 	return p.printResult(revision)
+}
+
+// claimLatest makes this run's upload the PR's newest, which ends any older
+// run still following its review, and saves the publication record in the same
+// step so that an older run cannot write over it afterwards.
+func (p *publisher) claimLatest() {
+	var raw [8]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		p.save()
+		return
+	}
+	p.token = hex.EncodeToString(raw[:])
+	err := state.ClaimLatest(p.key(), state.Latest{Token: p.token, PublicationID: p.rec.PublicationID, HeadSHA: p.rec.HeadSHA}, p.save)
+	if err != nil {
+		p.token = ""
+		p.detailf("could not record the newest upload: %v", err)
+	}
 }
 
 // withAuthorizationLink adds where to authorize the Pair GitHub App when Pair
@@ -576,40 +620,81 @@ func (p *publisher) comment() {
 	p.logf("PR comment %s", result)
 }
 
-// waitAnalysis polls the analysis job until it finishes or --timeout passes.
-func (p *publisher) waitAnalysis(ctx context.Context, client *publish.Client) error {
-	ctx, cancel := context.WithTimeout(ctx, p.args.Timeout)
+// finish ends a run once its last upload is stored and the PR's lock is
+// released: with --wait it follows the review until it is ready.
+func (p *publisher) finish(ctx context.Context, runErr error) error {
+	defer p.closeLog()
+	if runErr != nil || !p.uploaded || !p.args.Wait {
+		return runErr
+	}
+	switch p.waitAnalysis(ctx) {
+	case waitInterrupted:
+		return errors.New("interrupted while waiting for the review")
+	case waitFinished:
+		p.reviewReady()
+	}
+	return p.printResult(p.revision)
+}
+
+// waitOutcome is how following the analysis ended.
+type waitOutcome int
+
+const (
+	// waitFinished: nothing more to wait for. The analysis succeeded or
+	// failed, there is none, the wait timed out or Pair could not be asked.
+	// The publisher is told the same thing for all of them.
+	waitFinished waitOutcome = iota
+	// waitSuperseded: a newer upload of the PR took over.
+	waitSuperseded
+	// waitInterrupted: the process was told to stop.
+	waitInterrupted
+)
+
+// waitAnalysis polls the analysis job until it finishes, --timeout passes or a
+// newer upload of the PR takes over. Nothing it learns reaches the terminal or
+// a notification: the details go to the run's log file only.
+func (p *publisher) waitAnalysis(ctx context.Context) waitOutcome {
+	wctx, cancel := context.WithTimeout(ctx, p.args.Timeout)
 	defer cancel()
-	p.logf("waiting for the analysis (up to %s)", p.args.Timeout)
+	p.logf("waiting for the review to be ready (up to %s)", p.args.Timeout)
 
 	interval := pollStart
 	for {
-		an, err := client.AnalysisStatus(ctx, p.rec.PublicationID)
+		if !state.IsLatest(p.key(), p.token) {
+			p.detailf("a newer publish of this PR took over; no longer following this one")
+			return waitSuperseded
+		}
+		an, err := p.client.AnalysisStatus(wctx, p.rec.PublicationID)
 		var apiErr *publish.Error
 		switch {
 		case errors.Is(err, publish.ErrNoAnalysis):
-			p.logf("the server reports no analysis job for this publication")
-			return nil
-		case ctx.Err() != nil:
-			return p.timedOut(ctx)
+			p.detailf("the server reports no analysis job for this publication")
+			return waitFinished
+		case wctx.Err() != nil:
+			return p.waitEnded(ctx)
 		case errors.As(err, &apiErr) && apiErr.Status == http.StatusNotFound && p.rec.AnalysisJobID == "":
 			// Finalize named no analysis job and the server has no such
 			// route: an older backend that stores the evidence and nothing more.
-			p.logf("the server has no analysis for this publication")
-			return nil
+			p.detailf("the server has no analysis for this publication")
+			return waitFinished
 		case errors.As(err, &apiErr) && apiErr.Transient():
-			p.logf("analysis status unavailable (%v); retrying", err)
+			p.detailf("analysis status unavailable (%v); retrying", err)
 		case err != nil:
-			return p.fail(err)
+			p.detailf("analysis status could not be read: %v", redact.Text(err.Error()))
+			return waitFinished
 		default:
+			changed := an.JobID != p.rec.AnalysisJobID || an.State != p.rec.AnalysisState
 			p.rec.AnalysisJobID, p.rec.AnalysisState = an.JobID, an.State
-			p.save()
 			if an.Done() {
-				return p.analysisDone(an)
+				p.logAnalysisEnd(an)
+				return waitFinished
+			}
+			if changed {
+				state.WithLatest(p.key(), p.token, p.save)
 			}
 		}
-		if err := p.env.sleep(ctx, interval); err != nil {
-			return p.timedOut(ctx)
+		if err := p.env.sleep(wctx, interval); err != nil {
+			return p.waitEnded(ctx)
 		}
 		if interval = interval * 3 / 2; interval > pollMax {
 			interval = pollMax
@@ -617,28 +702,49 @@ func (p *publisher) waitAnalysis(ctx context.Context, client *publish.Client) er
 	}
 }
 
-func (p *publisher) timedOut(ctx context.Context) error {
-	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		err := fmt.Errorf("the analysis had not finished after %s; run paircli status to follow it", p.args.Timeout)
-		p.logf("%v", err)
-		return err
+// waitEnded says why the wait's context ended: the process was interrupted, or
+// --timeout passed.
+func (p *publisher) waitEnded(ctx context.Context) waitOutcome {
+	if ctx.Err() != nil {
+		return waitInterrupted
 	}
-	return p.fail(errors.New("interrupted while waiting for the analysis"))
+	p.detailf("the analysis had not finished after %s", p.args.Timeout)
+	return waitFinished
 }
 
-func (p *publisher) analysisDone(an *publish.Analysis) error {
+// logAnalysisEnd records how the analysis ended, with the error code of a
+// failed one, in the log file.
+func (p *publisher) logAnalysisEnd(an *publish.Analysis) {
 	if an.State == publish.AnalysisSucceeded {
+		p.detailf("analysis succeeded")
+		return
+	}
+	p.detailf("analysis failed (%s)", analysisErrorCode(an))
+}
+
+// analysisErrorCode is the code a failed analysis carries, or "unknown".
+func analysisErrorCode(an *publish.Analysis) string {
+	if an.ErrorCode != nil && *an.ErrorCode != "" {
+		return *an.ErrorCode
+	}
+	return "unknown"
+}
+
+// reviewReady marks the review ready and sends the one notification that says
+// so, unless a newer upload of the PR took over in the meantime: that run then
+// tells the user itself. Marking and the decision share one critical section
+// with state.ClaimLatest, so two runs cannot both notify for the same upload.
+func (p *publisher) reviewReady() {
+	ready := state.WithLatest(p.key(), p.token, func() {
 		p.rec.State, p.rec.Error = state.StateReady, ""
 		p.save()
-		p.logf("analysis succeeded")
-		p.env.notify("Pair review ready", fmt.Sprintf("PR #%d analysis finished. %s", p.number, p.rec.ReviewURL))
-		return nil
+	})
+	if !ready {
+		p.detailf("a newer publish of this PR took over; no longer following this one")
+		return
 	}
-	code := "unknown"
-	if an.ErrorCode != nil && *an.ErrorCode != "" {
-		code = *an.ErrorCode
-	}
-	return p.fail(fmt.Errorf("the analysis failed (%s)", code))
+	p.env.notify("Pair review ready", p.rec.ReviewURL)
+	p.logf("review ready: %s", p.rec.ReviewURL)
 }
 
 // publishSummary is the JSON a run prints.
@@ -717,7 +823,7 @@ func (p *publisher) printResult(revision int64) error {
 			Revision: revision,
 		})
 	}
-	_, err := fmt.Fprintf(p.env.stdout, "paircli: published %s (%s)\n", p.rec.ReviewURL, p.rec.State)
+	_, err := fmt.Fprintf(p.env.stdout, "paircli: published %s (%s)\n", p.rec.ReviewURL, stateLabel(p.rec))
 	return err
 }
 

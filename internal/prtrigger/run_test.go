@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 type startCall struct {
@@ -156,5 +157,41 @@ func TestStartDetached_WritesALogUnderTheLogDir(t *testing.T) {
 	}
 	if info, err := os.Stat(logs[0]); err != nil || info.Mode().Perm() != 0o600 {
 		t.Errorf("log stat = %v, %v, want mode 0600", info, err)
+	}
+}
+
+// The detached publish follows the review to the end (--wait, default
+// timeout), since that is the process that sends the notification saying the
+// review is ready.
+func TestPublishArgs_FollowTheReviewWithTheDefaultTimeout(t *testing.T) {
+	got := strings.Join(PublishArgs(wantPR, "/repo"), " ")
+	want := "publish " + wantPR.URL() + " --repo-dir /repo --wait"
+	if got != want {
+		t.Errorf("args = %q, want %q", got, want)
+	}
+}
+
+// startDetached passes those arguments to the binary it starts.
+func TestStartDetached_PassesWait(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("HOME", root)
+	out := filepath.Join(t.TempDir(), "args")
+	script := filepath.Join(t.TempDir(), "paircli")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$ARGS_OUT\"\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("ARGS_OUT", out)
+	if err := startDetached(script, wantPR, "/repo"); err != nil {
+		t.Fatalf("startDetached: %v", err)
+	}
+	var got []byte
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if got, _ = os.ReadFile(out); len(got) > 0 {
+			break
+		}
+	}
+	want := strings.Join(PublishArgs(wantPR, "/repo"), "\n") + "\n"
+	if string(got) != want {
+		t.Errorf("the started process got %q, want %q", got, want)
 	}
 }

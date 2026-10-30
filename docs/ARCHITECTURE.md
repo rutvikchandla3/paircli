@@ -90,7 +90,10 @@ uploads. The steps, each written to the PR's publication record
    and skips a rerun when a successful run already published the current head
    (one `gh pr view` call). The publication record ends with the last run's
    result; the log file keeps every run. `--dry-run` neither leaves nor takes
-   markers.
+   markers. The lock covers publishing only: it is released as soon as the
+   last upload is stored (step 7), before `--wait` follows the review, so a
+   push during that wait starts its own publish at once instead of leaving a
+   marker.
 2. **Login.** `ensureLogin` (device login if there is no usable credential);
    a login that cannot be completed exits 2. The server is the credential's
    `server_url`, else `resolveServer`.
@@ -146,9 +149,31 @@ uploads. The steps, each written to the PR's publication record
    the PR link comment (`prcomment`: only a comment the current `gh` user
    wrote that carries `<!-- pair-review-link -->` is ever edited) and a
    desktop notification (`notify`: `osascript` or `notify-send`, otherwise
-   nothing). Comment and notification failures are logged, never fatal.
-8. **`--wait`** polls `GET .../analysis` every 5 s growing to 15 s until the
-   job succeeds or fails, or `--timeout` (default 20m) passes.
+   nothing), titled `PR #<n> uploaded to Pair` with the review URL as its
+   text. Comment and notification failures are logged, never fatal. Right
+   after finalize, before anything else is saved, the run also claims the PR's
+   *latest upload*: a random token in `state/latest/<key>.json`, written under
+   the short-lived lock `locks/<key>.latest.lock` together with the
+   publication record (`state.ClaimLatest`).
+8. **`--wait`** (which the hooks pass) runs after the PR lock is released. It
+   polls `GET .../analysis` every 5 s growing to 15 s until the job finishes
+   (succeeded or failed), `--timeout` (default 20m) passes, or Pair cannot be
+   asked. Every one of those ends the same way: the record becomes `ready` and
+   one notification, `Pair review ready` with the review URL as its text,
+   is sent. Nothing about the analysis reaches the terminal or a
+   notification: its state, a failed job's error code, a timeout and polling
+   errors are written to the run's log file only, and a failed or unfinished
+   analysis does not fail the run (exit 0, output `published <url> (ready)`).
+   Before each poll the run checks that its token is still the PR's latest
+   upload; when a newer publish of the same PR has claimed it, the run stops
+   quietly, without a notification or a record write (the newer run reports
+   for its own upload). The final "mark ready and notify" step re-checks the
+   token under the same guard lock, so two runs cannot both notify for one
+   upload. A crash holds nothing: the PR lock is already free, the guard is a
+   flock the kernel drops, and a stale token only means an older run (if any
+   is left) stops following. A Ctrl-C or SIGTERM during the wait ends the run
+   with an error and no notification; the record stays `processing` until
+   `paircli status` settles it.
 
 `--dry-run` builds the bundle and prints the plan, bundle path, redaction
 counts, the changed-file totals and the server it would use. It never logs in,

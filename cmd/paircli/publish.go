@@ -254,10 +254,13 @@ func publishRun(ctx context.Context, env publishEnv, a publishArgs) error {
 			// and will take the marker.
 			if relock, lockErr := state.TryLock(key); lockErr == nil {
 				state.TakePending(key)
-				lock = relock
-				p.closeLog()
-				reruns++
-				continue
+				if p.rerunUseful(runErr) {
+					lock = relock
+					p.closeLog()
+					reruns++
+					continue
+				}
+				relock.Release()
 			}
 		}
 		return finishRun(ctx, p, followed, runErr)
@@ -304,6 +307,12 @@ func (p *publisher) rerunWanted(key string, runErr error) bool {
 	if _, ok := state.TakePending(key); !ok {
 		return false
 	}
+	return p.rerunUseful(runErr)
+}
+
+// rerunUseful says whether a requested rerun should go ahead after a run that
+// ended in runErr, and logs why not. The marker has already been taken.
+func (p *publisher) rerunUseful(runErr error) bool {
 	var coded *exitError
 	if errors.As(runErr, &coded) {
 		return false

@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rutvikchandla3/paircli/internal/pr"
 	"github.com/rutvikchandla3/paircli/internal/prtrigger"
 	"github.com/rutvikchandla3/paircli/internal/publish"
 	"github.com/rutvikchandla3/paircli/internal/state"
@@ -614,6 +615,8 @@ func TestPublishOtherForbiddenCodesGetNoAuthorizationLink(t *testing.T) {
 func assertNoAnalysisTalk(t *testing.T, h *pubHarness) {
 	t.Helper()
 	shown := h.stdout.String() + h.stderr.String() + strings.Join(h.notices, "\n")
+	// The temp dirs are named after the running test, which may say "Analysis".
+	shown = strings.NewReplacer(h.home, "<home>", h.repoDir, "<repo>").Replace(shown)
 	for _, banned := range []string{"model_unavailable", "analysis", "Analysis", "failed", "retrying", "attempt"} {
 		if strings.Contains(shown, banned) {
 			t.Errorf("output mentions %q:\n%s", banned, shown)
@@ -991,6 +994,86 @@ func TestPublishRerunForAnUnchangedHeadDoesNothing(t *testing.T) {
 	}
 	if rec := h.record(); rec.State != state.StateProcessing || rec.HeadSHA != pubHead {
 		t.Errorf("record = %+v", rec)
+	}
+}
+
+// headCheckHook runs just after a head query answers, and lets a test place a
+// push in the window between the last marker check and the lock release.
+type headCheckHook struct {
+	pr.Runner
+	after func(n int, head string)
+	n     int
+}
+
+func (r *headCheckHook) Run(args ...string) ([]byte, error) {
+	out, err := r.Runner.Run(args...)
+	if err == nil && strings.Join(args, " ") == "pr view 7 -R acme/shop --json headRefOid --jq .headRefOid" {
+		r.n++
+		r.after(r.n, strings.TrimSpace(string(out)))
+	}
+	return out, err
+}
+
+// lateMarker makes a push land after the first head check of a rerun decision:
+// the marker appears (and the head becomes newHead when it is not "") after the
+// run's last marker check, so only the re-lock path can see it.
+func (h *pubHarness) lateMarker(newHead string) {
+	key := state.Key("acme", "shop", 7)
+	h.pushDuringRun(1, func(int) string { return "" })
+	h.env.runner = &headCheckHook{Runner: h.gh, after: func(n int, _ string) {
+		if n != 1 {
+			return
+		}
+		if newHead != "" {
+			h.gh.setHead(newHead)
+		}
+		state.MarkPending(key, state.PendingRequest{PRURL: "https://github.com/acme/shop/pull/7", RepoDir: h.repoDir})
+	}}
+}
+
+// A push that lands between the last marker check and the lock release is
+// picked up by the re-lock; when the head is still the published one it does
+// nothing, as a marker taken by the normal check would.
+func TestPublishRelockForAnUnchangedHeadDoesNothing(t *testing.T) {
+	h := newPubHarness(t)
+	h.lateMarker("")
+
+	if err := h.run("--no-comment"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if len(h.api.heads) != 1 {
+		t.Errorf("reservations = %d, want 1: the re-lock must not publish an unchanged head again", len(h.api.heads))
+	}
+	if state.HasPending(state.Key("acme", "shop", 7)) {
+		t.Error("the marker was not removed")
+	}
+	if _, err := state.TryLock(state.Key("acme", "shop", 7)); err != nil {
+		t.Errorf("the PR's lock was left held: %v", err)
+	}
+	rec := h.record()
+	if rec.State != state.StateProcessing || rec.HeadSHA != pubHead {
+		t.Errorf("record = %+v", rec)
+	}
+	log, _ := os.ReadFile(rec.Log)
+	if strings.Count(string(log), "publishing https://github.com/acme/shop/pull/7") != 1 || !strings.Contains(string(log), "is already published") {
+		t.Errorf("log should show one run and why the rerun was skipped:\n%s", log)
+	}
+}
+
+// The same window, but the head did change: the re-lock publishes it.
+func TestPublishRelockForAChangedHeadPublishesIt(t *testing.T) {
+	h := newPubHarness(t)
+	newHead := strings.Repeat("a", 40)
+	h.lateMarker(newHead)
+
+	if err := h.run("--no-comment"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if fmt.Sprint(h.api.heads) != fmt.Sprint([]string{pubHead, newHead}) {
+		t.Errorf("published heads = %v, want the old head and then the pushed one", h.api.heads)
+	}
+	if state.HasPending(state.Key("acme", "shop", 7)) {
+		t.Error("the marker was not removed")
 	}
 }
 

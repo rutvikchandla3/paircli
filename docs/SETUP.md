@@ -84,9 +84,15 @@ The human output speaks only of what the publisher did, one line per PR:
 `processing` also reads `uploaded`), `ready`, or `failed (<step>)` with the
 error and log for a run that stopped before its upload was complete. It never
 shows an analysis state or an analysis error code, and a record an earlier
-version left as failed at the analysis step reads `ready`. `--json` prints the
-stored records as they are, including `analysis_job_id` and
-`analysis_state`.
+version left as failed at the analysis step reads `ready`. `--json` is as
+neutral: each publication has `schema_version`, `pr_url`, `owner`, `repo`,
+`number`, `head_sha`, `state` (`running`, `uploaded`, `ready` or `failed`, read
+as above), `step`, `error` (set only for a `failed` state), `publication_id`,
+`log`, `review_url`, `started_at` and `updated_at`, and no field about the
+analysis; a record's last step is `finalize`, never `analysis`. The same goes
+for `paircli publish --json`, whose `state` is `uploaded` or `ready`. (The
+stored record under `~/.paircli/state/` keeps the analysis job and state for
+`status`' own refresh.)
 
 ## Hooks that publish
 
@@ -121,9 +127,12 @@ started while another one is running for the PR leaves a marker
 one publishes again when it finishes (up to 3 extra times), so the newest head
 is never skipped. The lock is held only until the upload is stored: the
 detached `--wait` that follows runs without it, so a push while it waits
-publishes at once, and that newer publish ends the older run's wait without a
-notification (the older run notifies for nothing; the newer one does, once its
-review is ready). A hook-started publish sends two notifications:
+publishes at once. A newer publish that itself follows its review (`--wait`,
+which the hooks pass) ends the older run's wait without a notification (the
+older run notifies for nothing; the newer one does, once its review is ready).
+A newer publish without `--wait` follows nothing and ends nothing: the older
+run keeps following and sends its `Pair review ready` (the same review URL).
+A hook-started publish sends two notifications:
 `PR #<n> uploaded to Pair` after the upload and `Pair review ready` (the review
 URL in the text) when the review is ready.
 

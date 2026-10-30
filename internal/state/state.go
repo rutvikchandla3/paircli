@@ -43,22 +43,27 @@ var ErrLocked = errors.New("state: locked by another process")
 
 // Publication is the record of one PR's most recent publication attempt.
 type Publication struct {
-	SchemaVersion int       `json:"schema_version"`
-	PRURL         string    `json:"pr_url"`
-	Owner         string    `json:"owner"`
-	Repo          string    `json:"repo"`
-	Number        int       `json:"number"`
-	HeadSHA       string    `json:"head_sha"`
-	State         string    `json:"state"`
-	Step          string    `json:"step"`
-	Error         string    `json:"error"`
-	PublicationID string    `json:"publication_id"`
-	AnalysisJobID string    `json:"analysis_job_id"`
-	AnalysisState string    `json:"analysis_state"`
-	Log           string    `json:"log"`
-	ReviewURL     string    `json:"review_url"`
-	StartedAt     time.Time `json:"started_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	SchemaVersion int    `json:"schema_version"`
+	PRURL         string `json:"pr_url"`
+	Owner         string `json:"owner"`
+	Repo          string `json:"repo"`
+	Number        int    `json:"number"`
+	HeadSHA       string `json:"head_sha"`
+	State         string `json:"state"`
+	Step          string `json:"step"`
+	Error         string `json:"error"`
+	PublicationID string `json:"publication_id"`
+	AnalysisJobID string `json:"analysis_job_id"`
+	AnalysisState string `json:"analysis_state"`
+	// RunID names the publish run that last wrote the record. A run that still
+	// follows its review writes the record only while it is that run's, so it
+	// cannot put an older upload over a newer run's record. Internal: `paircli
+	// status` does not print it.
+	RunID     string    `json:"run_id,omitempty"`
+	Log       string    `json:"log"`
+	ReviewURL string    `json:"review_url"`
+	StartedAt time.Time `json:"started_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 // ReviewURL is where a PR's review lives on pair.sh.
@@ -360,6 +365,16 @@ func ClaimLatest(key string, l Latest, whileHeld func()) error {
 		whileHeld()
 	}
 	return err
+}
+
+// Guarded runs fn under the guard lock, so that it is ordered against
+// ClaimLatest and WithLatest. A run that does not follow its review uses it to
+// write its publication record: it claims nothing, and an older follower's
+// check-then-write cannot interleave with it.
+func Guarded(key string, fn func()) {
+	lock := lockLatest(key)
+	defer lock.Release()
+	fn()
 }
 
 // IsLatest reports whether token still names the PR's newest upload. An empty

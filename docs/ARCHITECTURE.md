@@ -89,8 +89,11 @@ uploads. The steps, each written to the PR's publication record
    process (a marker left by the last allowed run stays for the next publish),
    and skips a rerun when a successful run already published the current head
    (one `gh pr view` call). The publication record ends with the last run's
-   result; the log file keeps every run. `--dry-run` neither leaves nor takes
-   markers. The lock covers publishing only: it is released as soon as the
+   result; the log file keeps every run. A `--wait` process follows the
+   newest upload it made, which is not always the last run's: when a rerun
+   fails (it keeps its failure notification, record and error) or does nothing,
+   the earlier upload is still live, so it is followed and its `Pair review
+   ready` is sent. `--dry-run` neither leaves nor takes markers. The lock covers publishing only: it is released as soon as the
    last upload is stored (step 7), before `--wait` follows the review, so a
    push during that wait starts its own publish at once instead of leaving a
    marker.
@@ -151,27 +154,38 @@ uploads. The steps, each written to the PR's publication record
    desktop notification (`notify`: `osascript` or `notify-send`, otherwise
    nothing), titled `PR #<n> uploaded to Pair` with the review URL as its
    text. Comment and notification failures are logged, never fatal. Right
-   after finalize, before anything else is saved, the run also claims the PR's
-   *latest upload*: a random token in `state/latest/<key>.json`, written under
-   the short-lived lock `locks/<key>.latest.lock` together with the
-   publication record (`state.ClaimLatest`).
+   after finalize, before anything else is saved, a run that will follow its
+   review (`--wait`) also claims the PR's *latest upload*: a random token in
+   `state/latest/<key>.json`, written under the short-lived lock
+   `locks/<key>.latest.lock` together with the publication record
+   (`state.ClaimLatest`). A run without `--wait` claims nothing and never
+   touches that file; it saves its record under the same lock
+   (`state.Guarded`), so it cannot end an older waiter. Every record carries
+   the id of the run that wrote it (`run_id`, internal), and a follower
+   writes the record only while it is still its own, so an older upload never
+   overwrites a newer run's record, a failed rerun's included.
 8. **`--wait`** (which the hooks pass) runs after the PR lock is released. It
    polls `GET .../analysis` every 5 s growing to 15 s until the job finishes
    (succeeded or failed), `--timeout` (default 20m) passes, or Pair cannot be
-   asked. Every one of those ends the same way: the record becomes `ready` and
+   asked (a 401 or an unreadable answer to the status request counts: it is
+   only logged). Every one of those ends the same way: the record becomes `ready` and
    one notification, `Pair review ready` with the review URL as its text,
    is sent. Nothing about the analysis reaches the terminal or a
    notification: its state, a failed job's error code, a timeout and polling
    errors are written to the run's log file only, and a failed or unfinished
    analysis does not fail the run (exit 0, output `published <url> (ready)`).
    Before each poll the run checks that its token is still the PR's latest
-   upload; when a newer publish of the same PR has claimed it, the run stops
-   quietly, without a notification or a record write (the newer run reports
-   for its own upload). The final "mark ready and notify" step re-checks the
+   upload; when a newer `--wait` publish of the same PR has claimed it, the run
+   stops quietly, without a notification or a record write (the newer run
+   reports for its own upload). A newer publish without `--wait` claims
+   nothing, so the older run keeps following and still sends `Pair review
+   ready` (Pair reports a superseded job as succeeded, and the review URL is
+   the PR's); it leaves the record to the newer upload. The final "mark ready and notify" step re-checks the
    token under the same guard lock, so two runs cannot both notify for one
    upload. A crash holds nothing: the PR lock is already free, the guard is a
    flock the kernel drops, and a stale token only means an older run (if any
-   is left) stops following. A Ctrl-C or SIGTERM during the wait ends the run
+   is left) stops following; the notification of a run that crashed after
+   claiming is lost, which is accepted. A Ctrl-C or SIGTERM during the wait ends the run
    with an error and no notification; the record stays `processing` until
    `paircli status` settles it.
 

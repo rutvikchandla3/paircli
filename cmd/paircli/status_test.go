@@ -208,6 +208,61 @@ func TestStatus_HumanOutputIsNeutralAboutTheAnalysis(t *testing.T) {
 	}
 }
 
+// `status --json` is as neutral as the human output: no analysis field, the
+// states read uploaded or ready, and a failed analysis is neither an error nor
+// a step.
+func TestStatus_JSONIsNeutralAboutTheAnalysis(t *testing.T) {
+	setupEnv(t)
+	records := []state.Publication{
+		{Number: 1, State: state.StateProcessing, Step: state.StepAnalysis, AnalysisJobID: testJobID, AnalysisState: "running"},
+		{Number: 2, State: state.StateReady, Step: state.StepAnalysis, AnalysisJobID: testJobID, AnalysisState: "failed"},
+		// What an earlier paircli left behind for a failed analysis.
+		{Number: 3, State: state.StateFailed, Step: state.StepAnalysis, AnalysisJobID: testJobID, AnalysisState: "failed",
+			Error: "the analysis failed (model_unavailable)", Log: "/logs/p3.log"},
+		{Number: 4, State: state.StateFailed, Step: state.StepFinalize, Error: "Pair rejected the publication"},
+	}
+	for _, p := range records {
+		p.Owner, p.Repo, p.ReviewURL = "o", "r", state.ReviewURL("o", "r", p.Number)
+		if err := state.WritePublication(p); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var out bytes.Buffer
+	if err := statusRun([]string{"--json"}, &out); err != nil {
+		t.Fatal(err)
+	}
+	for _, banned := range []string{"analysis", "processing", "model_unavailable", "succeeded", testJobID} {
+		if strings.Contains(out.String(), banned) {
+			t.Errorf("--json output mentions %q:\n%s", banned, out.String())
+		}
+	}
+	var got struct {
+		Publications []map[string]any `json:"publications"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	type want struct{ state, step, errText string }
+	wants := map[float64]want{
+		1: {"uploaded", "finalize", ""},
+		2: {"ready", "finalize", ""},
+		3: {"ready", "finalize", ""},
+		4: {"failed", "finalize", "Pair rejected the publication"},
+	}
+	if len(got.Publications) != len(wants) {
+		t.Fatalf("publications = %v", got.Publications)
+	}
+	for _, p := range got.Publications {
+		w := wants[p["number"].(float64)]
+		if p["state"] != w.state || p["step"] != w.step || p["error"] != w.errText {
+			t.Errorf("PR %v = state %v, step %v, error %v; want %+v", p["number"], p["state"], p["step"], p["error"], w)
+		}
+		if p["publication_id"] == nil || p["review_url"] == nil || p["head_sha"] == nil {
+			t.Errorf("PR %v lost a field: %v", p["number"], p)
+		}
+	}
+}
+
 // A run that stopped before the upload completed is still reported as failed,
 // with its step, error and log.
 func TestStatus_HumanOutputKeepsRealFailures(t *testing.T) {
@@ -390,8 +445,8 @@ func TestStatusRefresh_NetworkErrorKeepsTheRecord(t *testing.T) {
 	if after := storedPublication(t, 1); after != before {
 		t.Errorf("record changed: %+v -> %+v", before, after)
 	}
-	if !strings.Contains(out.String(), `"state": "processing"`) {
-		t.Errorf("output = %s, want the stored processing state", out.String())
+	if !strings.Contains(out.String(), `"state": "uploaded"`) {
+		t.Errorf("output = %s, want the stored processing record read as uploaded", out.String())
 	}
 }
 
@@ -402,8 +457,8 @@ func TestStatusRefresh_NotLoggedInSkipsTheRefresh(t *testing.T) {
 	statusAnalysisReader = func() (analysisReader, bool) { calls++; return nil, false }
 
 	pubs, _ := statusJSON(t)["publications"].([]any)
-	if len(pubs) != 1 || pubs[0].(map[string]any)["state"] != "processing" {
-		t.Errorf("publications = %v, want the stored processing record", pubs)
+	if len(pubs) != 1 || pubs[0].(map[string]any)["state"] != "uploaded" {
+		t.Errorf("publications = %v, want the stored processing record read as uploaded", pubs)
 	}
 	if calls != 1 {
 		t.Errorf("reader looked up %d times, want once", calls)

@@ -21,13 +21,54 @@ import (
 // statusReport is the `paircli status --json` document. It never holds a
 // credential, only whether one is usable.
 type statusReport struct {
-	SchemaVersion int                 `json:"schema_version"`
-	CLIVersion    string              `json:"cli_version"`
-	ServerURL     string              `json:"server_url"`
-	LoggedIn      bool                `json:"logged_in"`
-	Hooks         map[string]bool     `json:"hooks"`
-	Setup         setupSummary        `json:"setup"`
-	Publications  []state.Publication `json:"publications"`
+	SchemaVersion int               `json:"schema_version"`
+	CLIVersion    string            `json:"cli_version"`
+	ServerURL     string            `json:"server_url"`
+	LoggedIn      bool              `json:"logged_in"`
+	Hooks         map[string]bool   `json:"hooks"`
+	Setup         setupSummary      `json:"setup"`
+	Publications  []publicationView `json:"publications"`
+}
+
+// publicationView is a publication record as `paircli status --json` prints
+// it: what the publisher did (running, uploaded, ready, failed), never where
+// Pair's analysis stands. The stored record keeps that for itself; the view
+// leaves out its analysis fields and reads its states and steps the way the
+// human output does (see stateLabel).
+type publicationView struct {
+	SchemaVersion int       `json:"schema_version"`
+	PRURL         string    `json:"pr_url"`
+	Owner         string    `json:"owner"`
+	Repo          string    `json:"repo"`
+	Number        int       `json:"number"`
+	HeadSHA       string    `json:"head_sha"`
+	State         string    `json:"state"`
+	Step          string    `json:"step"`
+	Error         string    `json:"error"`
+	PublicationID string    `json:"publication_id"`
+	Log           string    `json:"log"`
+	ReviewURL     string    `json:"review_url"`
+	StartedAt     time.Time `json:"started_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// viewOf is the printed form of a stored record. The analysis step reads as
+// finalize, the last step a publisher's own run goes through, and an error is
+// shown only for a record that reads as failed: a failed analysis is not one.
+func viewOf(p state.Publication) publicationView {
+	label := stateLabel(p)
+	v := publicationView{
+		SchemaVersion: p.SchemaVersion, PRURL: p.PRURL, Owner: p.Owner, Repo: p.Repo, Number: p.Number,
+		HeadSHA: p.HeadSHA, State: label, Step: p.Step, PublicationID: p.PublicationID, Log: p.Log,
+		ReviewURL: p.ReviewURL, StartedAt: p.StartedAt, UpdatedAt: p.UpdatedAt,
+	}
+	if v.Step == state.StepAnalysis {
+		v.Step = state.StepFinalize
+	}
+	if label == state.StateFailed {
+		v.Error = p.Error
+	}
+	return v
 }
 
 // setupSummary is the part of setup.json `paircli status` reports.
@@ -80,7 +121,7 @@ func buildStatus(prFilter string) (statusReport, error) {
 		LoggedIn:      loggedInFor(server),
 		Hooks:         map[string]bool{},
 		Setup:         currentSetup(),
-		Publications:  []state.Publication{},
+		Publications:  []publicationView{},
 	}
 	for _, name := range harnessOrder {
 		report.Hooks[name] = harnessTable[name].Installed()
@@ -103,7 +144,9 @@ func buildStatus(prFilter string) (statusReport, error) {
 		}
 		pubs = matching
 	}
-	report.Publications = append(report.Publications, refreshPublications(pubs)...)
+	for _, p := range refreshPublications(pubs) {
+		report.Publications = append(report.Publications, viewOf(p))
+	}
 	return report, nil
 }
 
@@ -290,7 +333,7 @@ func printStatus(w io.Writer, r statusReport) error {
 	} else {
 		b.WriteString("publications:\n")
 		for _, p := range r.Publications {
-			label := stateLabel(p)
+			label := p.State
 			fmt.Fprintf(&b, "  %s/%s#%d  %s", p.Owner, p.Repo, p.Number, label)
 			// The step says where a run is or where it stopped; once the
 			// evidence is uploaded there is nothing more to say about it.

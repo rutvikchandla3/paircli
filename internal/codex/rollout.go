@@ -34,8 +34,11 @@ const (
 	rolloutFamCompaction = "compaction"
 )
 
-// DefaultRoot returns Codex CLI's default session root, ~/.codex.
+// DefaultRoot returns Codex CLI's active state root, honoring CODEX_HOME.
 func DefaultRoot() string {
+	if root := os.Getenv(codexHomeEnv); root != "" {
+		return root
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ".codex"

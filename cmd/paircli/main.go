@@ -107,7 +107,7 @@ judge flags:
 
 publish flags:
   --repo-dir DIR          repository directory (default: the current directory)
-  --wait                  wait for Pair's analysis of the publication to finish
+  --wait                  wait until the published review is ready
   --timeout DUR           how long --wait waits (default 20m)
   --dry-run               build the bundle and print the plan; publish nothing
   --no-comment            do not post the Pair link comment on the PR

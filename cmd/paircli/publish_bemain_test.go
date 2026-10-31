@@ -162,14 +162,14 @@ func TestPublishAgainstBackendMain(t *testing.T) {
 		}
 	})
 
-	t.Run("--wait ends quickly with the upload when there is no analysis route", func(t *testing.T) {
+	t.Run("--wait ends quickly with a ready review when there is no analysis route", func(t *testing.T) {
 		h, _ := newBEMainHarness(t)
 		if err := h.run("--wait"); err != nil {
 			t.Fatalf("publish --wait: %v\n%s", err, h.stderr)
 		}
 		rec := h.record()
-		if rec.State != state.StateUploaded || rec.Error != "" {
-			t.Errorf("record = %+v, want uploaded and no error", rec)
+		if rec.State != state.StateReady || rec.Error != "" {
+			t.Errorf("record = %+v, want ready and no error: no analysis is told to the publisher like any other end", rec)
 		}
 		if len(h.sleeps) != 0 {
 			t.Errorf("--wait polled %d times for an analysis that cannot exist", len(h.sleeps))

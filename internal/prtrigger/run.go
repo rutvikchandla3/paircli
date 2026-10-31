@@ -80,15 +80,23 @@ func (r Runner) Run(ev Event, w io.Writer) error {
 	return json.NewEncoder(w).Encode(out)
 }
 
-// StartPublish runs `paircli publish <pr-url> --repo-dir <dir>` in a new
+// StartPublish runs `paircli publish <pr-url> --repo-dir <dir> --wait` in a new
 // session so it outlives the hook, with stdout and stderr going to a
-// timestamped log under state.LogDir().
+// timestamped log under state.LogDir(). --wait (with the default timeout) keeps
+// the process alive after the upload until the review is ready, which is when
+// it sends the notification that says so.
 func StartPublish(pr PR, dir string) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	return startDetached(exe, pr, dir)
+}
+
+// PublishArgs is the arguments (after the binary) of the detached publish: the
+// PR, its repository directory, and --wait with the default timeout.
+func PublishArgs(pr PR, dir string) []string {
+	return []string{"publish", pr.URL(), "--repo-dir", dir, "--wait"}
 }
 
 // startDetached is StartPublish for an explicit paircli binary.
@@ -107,7 +115,7 @@ func startDetached(exe string, pr PR, dir string) error {
 	}
 	defer log.Close()
 
-	cmd := exec.Command(exe, "publish", pr.URL(), "--repo-dir", dir)
+	cmd := exec.Command(exe, PublishArgs(pr, dir)...)
 	cmd.Stdout = log
 	cmd.Stderr = log
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}

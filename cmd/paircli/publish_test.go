@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/rutvikchandla3/paircli/internal/pr"
+	"github.com/rutvikchandla3/paircli/internal/prtrigger"
 	"github.com/rutvikchandla3/paircli/internal/publish"
 	"github.com/rutvikchandla3/paircli/internal/state"
 )
@@ -139,6 +141,7 @@ type pubAPI struct {
 	finalizeBody   string // error body for a finalizeStatus of 400 or more; defaults to a CONFLICT code
 	analysis       []string
 	heads          []string // head_sha of every reservation, in order
+	onAnalysis     func()   // called as an analysis poll is answered, with the API lock held
 	be             *beMain  // when set, answers like the Pair backend's main branch
 }
 
@@ -200,6 +203,9 @@ func (a *pubAPI) handle(w http.ResponseWriter, r *http.Request) {
 			"content_version": 3, "analysis_job_id": pubJobID, "analysis_state": "queued",
 		})
 	case strings.HasSuffix(r.URL.Path, "/analysis"):
+		if a.onAnalysis != nil {
+			a.onAnalysis()
+		}
 		current := a.analysis[0]
 		if len(a.analysis) > 1 {
 			a.analysis = a.analysis[1:]
@@ -209,8 +215,8 @@ func (a *pubAPI) handle(w http.ResponseWriter, r *http.Request) {
 			code = "model_unavailable"
 		}
 		reply(http.StatusOK, map[string]any{
-			"publication_id": pubPubID, "job_id": pubJobID, "state": current, "pipeline_version": "1",
-			"attempt_count": 1, "max_attempts": 5, "error_code": code, "updated_at": "2026-10-11T00:00:00Z", "completed_at": nil,
+			"publication_id": pubPubID, "job_id": pubJobID, "state": current,
+			"error_code": code, "updated_at": "2026-10-11T00:00:00Z", "completed_at": nil,
 		})
 	default:
 		w.WriteHeader(http.StatusNotFound)
@@ -451,13 +457,17 @@ func TestPublishEndToEndWithWait(t *testing.T) {
 	if !h.gh.called("api --method POST repos/acme/shop/issues/7/comments") {
 		t.Error("the Pair link comment was not posted")
 	}
-	if len(h.notices) != 2 || !strings.HasPrefix(h.notices[0], "Pair review ready") || !strings.Contains(h.notices[1], "analysis finished") {
-		t.Errorf("notices = %q", h.notices)
+	wantNotices := []string{
+		"PR #7 uploaded to Pair: https://pair.sh/acme/shop/pull/7",
+		"Pair review ready: https://pair.sh/acme/shop/pull/7",
+	}
+	if fmt.Sprint(h.notices) != fmt.Sprint(wantNotices) {
+		t.Errorf("notices = %q, want %q", h.notices, wantNotices)
 	}
 	if len(h.sleeps) != 1 || h.sleeps[0] != 5*time.Second {
 		t.Errorf("sleeps = %v, want one 5s poll interval", h.sleeps)
 	}
-	if !strings.Contains(h.stdout.String(), "published https://pair.sh/acme/shop/pull/7") {
+	if !strings.Contains(h.stdout.String(), "published https://pair.sh/acme/shop/pull/7 (ready)") {
 		t.Errorf("stdout = %q", h.stdout)
 	}
 	if _, err := os.Stat(h.scanFile(pubHead, "signals.json")); err != nil {
@@ -477,8 +487,15 @@ func TestPublishJSONOutputKeepsStdoutClean(t *testing.T) {
 	if err := json.Unmarshal(h.stdout.Bytes(), &out); err != nil {
 		t.Fatalf("stdout is not one JSON document: %v\n%s", err, h.stdout)
 	}
-	if out.State != state.StateProcessing || out.PublicationID != pubPubID || out.AnalysisJobID != pubJobID || out.HeadSHA != pubHead || out.Revision == 0 {
+	if out.State != state.StateUploaded || out.PublicationID != pubPubID || out.HeadSHA != pubHead || out.Revision == 0 {
 		t.Errorf("summary = %+v", out)
+	}
+	// Nothing in the JSON speaks of the analysis, and the state reads like the
+	// human output's.
+	for _, banned := range []string{"analysis", "processing", pubJobID} {
+		if strings.Contains(h.stdout.String(), banned) {
+			t.Errorf("--json output mentions %q:\n%s", banned, h.stdout)
+		}
 	}
 	if !strings.Contains(h.stderr.String(), "published revision") {
 		t.Errorf("log lines belong on stderr in --json mode: %q", h.stderr)
@@ -593,26 +610,259 @@ func TestPublishOtherForbiddenCodesGetNoAuthorizationLink(t *testing.T) {
 	}
 }
 
-func TestPublishFailedAnalysisFailsTheWait(t *testing.T) {
-	h := newPubHarness(t)
-	h.api.analysis = []string{"running", "failed"}
-	if err := h.run("--wait"); err == nil || !strings.Contains(err.Error(), "model_unavailable") {
-		t.Fatalf("err = %v", err)
-	}
-	if rec := h.record(); rec.State != state.StateFailed || rec.AnalysisState != "failed" {
-		t.Errorf("record = %+v", rec)
+// What a publisher is shown, whatever the analysis does: no code, no state, no
+// failure. Only the log file keeps the details.
+func assertNoAnalysisTalk(t *testing.T, h *pubHarness) {
+	t.Helper()
+	shown := h.stdout.String() + h.stderr.String() + strings.Join(h.notices, "\n")
+	// The temp dirs are named after the running test, which may say "Analysis".
+	shown = strings.NewReplacer(h.home, "<home>", h.repoDir, "<repo>").Replace(shown)
+	for _, banned := range []string{"model_unavailable", "analysis", "Analysis", "failed", "retrying", "attempt"} {
+		if strings.Contains(shown, banned) {
+			t.Errorf("output mentions %q:\n%s", banned, shown)
+		}
 	}
 }
 
-func TestPublishWaitTimeoutLeavesTheRecordProcessing(t *testing.T) {
+func TestPublishFailedAnalysisLooksLikeAReadyReview(t *testing.T) {
+	h := newPubHarness(t)
+	h.api.analysis = []string{"running", "failed"}
+	if err := h.run("--wait"); err != nil {
+		t.Fatalf("a failed analysis must not fail the run: %v", err)
+	}
+	rec := h.record()
+	if rec.State != state.StateReady || rec.Error != "" || rec.AnalysisState != "failed" {
+		t.Errorf("record = %+v, want ready, no error, the analysis state kept for the log", rec)
+	}
+	wantNotices := []string{
+		"PR #7 uploaded to Pair: https://pair.sh/acme/shop/pull/7",
+		"Pair review ready: https://pair.sh/acme/shop/pull/7",
+	}
+	if fmt.Sprint(h.notices) != fmt.Sprint(wantNotices) {
+		t.Errorf("notices = %q, want %q", h.notices, wantNotices)
+	}
+	assertNoAnalysisTalk(t, h)
+	if !strings.Contains(h.stdout.String(), "published https://pair.sh/acme/shop/pull/7 (ready)") {
+		t.Errorf("stdout = %q", h.stdout)
+	}
+	if log, _ := os.ReadFile(rec.Log); !strings.Contains(string(log), "analysis failed (model_unavailable)") {
+		t.Errorf("the error code is not in the log file:\n%s", log)
+	}
+}
+
+func TestPublishWaitTimeoutLooksLikeAReadyReview(t *testing.T) {
 	h := newPubHarness(t)
 	h.api.analysis = []string{"running"}
-	err := h.run("--wait", "--timeout", "1ns")
-	if err == nil || !strings.Contains(err.Error(), "had not finished") {
-		t.Fatalf("err = %v, want a timeout", err)
+	if err := h.run("--wait", "--timeout", "1ns"); err != nil {
+		t.Fatalf("a timed-out wait must not fail the run: %v", err)
+	}
+	if rec := h.record(); rec.State != state.StateReady || rec.Error != "" {
+		t.Errorf("record = %+v, want ready", rec)
+	}
+	if len(h.notices) != 2 || h.notices[1] != "Pair review ready: https://pair.sh/acme/shop/pull/7" {
+		t.Errorf("notices = %q", h.notices)
+	}
+	assertNoAnalysisTalk(t, h)
+	if log, _ := os.ReadFile(h.record().Log); !strings.Contains(string(log), "had not finished") {
+		t.Errorf("the timeout is not in the log file:\n%s", log)
+	}
+}
+
+func TestPublishInterruptedWaitSendsNothingMore(t *testing.T) {
+	h := newPubHarness(t)
+	h.api.analysis = []string{"running"}
+	ctx, cancel := context.WithCancel(context.Background())
+	h.env.sleep = func(ctx context.Context, d time.Duration) error {
+		cancel()
+		return ctx.Err()
+	}
+	a, err := parsePublishArgs([]string{"7", "--repo-dir", h.repoDir, "--wait"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := publishRun(ctx, h.env, a); err == nil {
+		t.Fatal("an interrupted wait should end the run with an error")
+	}
+	if len(h.notices) != 1 || !strings.HasPrefix(h.notices[0], "PR #7 uploaded to Pair") {
+		t.Errorf("notices = %q, want only the upload one", h.notices)
 	}
 	if rec := h.record(); rec.State != state.StateProcessing {
-		t.Errorf("record state = %s, want processing", rec.State)
+		t.Errorf("record state = %s, want it left for status to settle", rec.State)
+	}
+	assertNoAnalysisTalk(t, h)
+}
+
+// The PR's lock is free once the upload is done, so the wait does not hold up
+// a push, and a publish started during the wait runs at once; it is neither
+// deferred to a pending marker nor refused.
+func TestPublishReleasesTheLockBeforeWaiting(t *testing.T) {
+	h := newPubHarness(t)
+	key := state.Key("acme", "shop", 7)
+	h.api.analysis = []string{"running", "succeeded"}
+	polls := 0
+	h.env.sleep = func(ctx context.Context, d time.Duration) error {
+		polls++
+		lock, err := state.TryLock(key)
+		if err != nil {
+			t.Errorf("the PR is still locked while waiting: %v", err)
+			return nil
+		}
+		lock.Release()
+		return nil
+	}
+	if err := h.run("--wait", "--no-comment"); err != nil {
+		t.Fatal(err)
+	}
+	if polls == 0 {
+		t.Fatal("the wait never slept, so the lock was never checked")
+	}
+}
+
+// latestFile is what state.Latest holds for the PR, as the raw bytes.
+func latestFile(t *testing.T) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(state.Dir(), "latest", state.Key("acme", "shop", 7)+".json"))
+	if err != nil {
+		t.Fatalf("no latest record: %v", err)
+	}
+	return string(data)
+}
+
+// A publish without --wait follows nothing, so it does not take over from an
+// older run that does: that run keeps following and, as pair-be reports a
+// superseded job as succeeded, still sends "Pair review ready" with the PR's
+// URL. The newer upload's record and the latest record stay intact.
+func TestPublishNonWaitingPublishDoesNotEndTheOlderWaiter(t *testing.T) {
+	h := newPubHarness(t)
+	key := state.Key("acme", "shop", 7)
+	h.api.analysis = []string{"running", "succeeded"}
+	newHead := strings.Repeat("a", 40)
+
+	var latestBefore, latestAfter string
+	polls := 0
+	h.env.sleep = func(ctx context.Context, d time.Duration) error {
+		polls++
+		if polls > 1 {
+			return nil
+		}
+		// A push during the wait: a second publish of the same PR finds the
+		// lock free, publishes the new head and, as it has no --wait, returns.
+		latestBefore = latestFile(t)
+		h.gh.setHead(newHead)
+		if err := h.run("--no-comment"); err != nil {
+			t.Errorf("the second publish: %v", err)
+		}
+		latestAfter = latestFile(t)
+		return nil
+	}
+	if err := h.run("--wait", "--no-comment"); err != nil {
+		t.Fatalf("the first publish: %v", err)
+	}
+
+	if latestBefore == "" || latestAfter != latestBefore {
+		t.Errorf("a publish without --wait changed the latest record:\nbefore %s\nafter  %s", latestBefore, latestAfter)
+	}
+	if fmt.Sprint(h.api.heads) != fmt.Sprint([]string{pubHead, newHead}) {
+		t.Errorf("published heads = %v, want both", h.api.heads)
+	}
+	if state.HasPending(key) {
+		t.Error("the second publish was deferred to a pending marker")
+	}
+	wantNotices := []string{
+		"PR #7 uploaded to Pair: https://pair.sh/acme/shop/pull/7", // first run
+		"PR #7 uploaded to Pair: https://pair.sh/acme/shop/pull/7", // second run
+		"Pair review ready: https://pair.sh/acme/shop/pull/7",      // first run, still following
+	}
+	if fmt.Sprint(h.notices) != fmt.Sprint(wantNotices) {
+		t.Errorf("notices = %q, want %q", h.notices, wantNotices)
+	}
+	// The record is the newer upload's: the older follower finished after it
+	// and did not write its own state over it.
+	if rec := h.record(); rec.HeadSHA != newHead || rec.State != state.StateProcessing {
+		t.Errorf("the older run's record write replaced the newer upload's: %+v", rec)
+	}
+	if strings.Count(h.stdout.String(), "published https://pair.sh/acme/shop/pull/7") != 2 {
+		t.Errorf("stdout = %q", h.stdout)
+	}
+	assertNoAnalysisTalk(t, h)
+}
+
+// Among runs that follow their review, the newest upload wins: the older run
+// stops without a notification or a record write and the newer one reports, so
+// the user is told once.
+func TestPublishNewerWaitingPublishEndsTheOlderWaiterSilently(t *testing.T) {
+	h := newPubHarness(t)
+	key := state.Key("acme", "shop", 7)
+	h.api.analysis = []string{"running", "running", "succeeded"}
+	newHead := strings.Repeat("a", 40)
+
+	polls := 0
+	h.env.sleep = func(ctx context.Context, d time.Duration) error {
+		polls++
+		if polls > 1 {
+			return nil // the second run's own wait
+		}
+		h.gh.setHead(newHead)
+		if err := h.run("--wait", "--no-comment"); err != nil {
+			t.Errorf("the second publish: %v", err)
+		}
+		return nil
+	}
+	if err := h.run("--wait", "--no-comment"); err != nil {
+		t.Fatalf("the first publish: %v", err)
+	}
+
+	if fmt.Sprint(h.api.heads) != fmt.Sprint([]string{pubHead, newHead}) {
+		t.Errorf("published heads = %v, want both", h.api.heads)
+	}
+	if state.HasPending(key) {
+		t.Error("the second publish was deferred to a pending marker")
+	}
+	wantNotices := []string{
+		"PR #7 uploaded to Pair: https://pair.sh/acme/shop/pull/7", // first run
+		"PR #7 uploaded to Pair: https://pair.sh/acme/shop/pull/7", // second run
+		"Pair review ready: https://pair.sh/acme/shop/pull/7",      // second run only
+	}
+	if fmt.Sprint(h.notices) != fmt.Sprint(wantNotices) {
+		t.Errorf("notices = %q, want one ready notice, the newer run's", h.notices)
+	}
+	if rec := h.record(); rec.HeadSHA != newHead || rec.State != state.StateReady {
+		t.Errorf("the record must be the newer run's, ready: %+v", rec)
+	}
+	assertNoAnalysisTalk(t, h)
+}
+
+// Another run's upload is stored while this run's last poll is in flight, so
+// the check at the top of the loop had passed: the run must still not mark the
+// record or notify, because the newer run does both for its own upload.
+func TestPublishOlderWaiterWhoseAnalysisEndsAfterTheClaimStaysQuiet(t *testing.T) {
+	h := newPubHarness(t)
+	key := state.Key("acme", "shop", 7)
+	h.api.analysis = []string{"succeeded"}
+	h.api.onAnalysis = func() {
+		state.ClaimLatest(key, state.Latest{Token: "other-run", PublicationID: pubPubID}, nil)
+	}
+	if err := h.run("--wait", "--no-comment"); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.notices) != 1 || !strings.HasPrefix(h.notices[0], "PR #7 uploaded to Pair") {
+		t.Errorf("notices = %q, want only the upload one", h.notices)
+	}
+	if rec := h.record(); rec.State == state.StateReady {
+		t.Errorf("the superseded run marked the record ready: %+v", rec)
+	}
+}
+
+func TestPublishWithoutWaitDoesNotFollowTheReview(t *testing.T) {
+	h := newPubHarness(t)
+	if err := h.run("--no-comment"); err != nil {
+		t.Fatal(err)
+	}
+	if len(h.notices) != 1 || h.notices[0] != "PR #7 uploaded to Pair: https://pair.sh/acme/shop/pull/7" {
+		t.Errorf("notices = %q, want only the upload one", h.notices)
+	}
+	if !strings.Contains(h.stdout.String(), "(uploaded)") {
+		t.Errorf("stdout = %q, want the neutral uploaded label", h.stdout)
 	}
 }
 
@@ -747,6 +997,86 @@ func TestPublishRerunForAnUnchangedHeadDoesNothing(t *testing.T) {
 	}
 }
 
+// headCheckHook runs just after a head query answers, and lets a test place a
+// push in the window between the last marker check and the lock release.
+type headCheckHook struct {
+	pr.Runner
+	after func(n int, head string)
+	n     int
+}
+
+func (r *headCheckHook) Run(args ...string) ([]byte, error) {
+	out, err := r.Runner.Run(args...)
+	if err == nil && strings.Join(args, " ") == "pr view 7 -R acme/shop --json headRefOid --jq .headRefOid" {
+		r.n++
+		r.after(r.n, strings.TrimSpace(string(out)))
+	}
+	return out, err
+}
+
+// lateMarker makes a push land after the first head check of a rerun decision:
+// the marker appears (and the head becomes newHead when it is not "") after the
+// run's last marker check, so only the re-lock path can see it.
+func (h *pubHarness) lateMarker(newHead string) {
+	key := state.Key("acme", "shop", 7)
+	h.pushDuringRun(1, func(int) string { return "" })
+	h.env.runner = &headCheckHook{Runner: h.gh, after: func(n int, _ string) {
+		if n != 1 {
+			return
+		}
+		if newHead != "" {
+			h.gh.setHead(newHead)
+		}
+		state.MarkPending(key, state.PendingRequest{PRURL: "https://github.com/acme/shop/pull/7", RepoDir: h.repoDir})
+	}}
+}
+
+// A push that lands between the last marker check and the lock release is
+// picked up by the re-lock; when the head is still the published one it does
+// nothing, as a marker taken by the normal check would.
+func TestPublishRelockForAnUnchangedHeadDoesNothing(t *testing.T) {
+	h := newPubHarness(t)
+	h.lateMarker("")
+
+	if err := h.run("--no-comment"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if len(h.api.heads) != 1 {
+		t.Errorf("reservations = %d, want 1: the re-lock must not publish an unchanged head again", len(h.api.heads))
+	}
+	if state.HasPending(state.Key("acme", "shop", 7)) {
+		t.Error("the marker was not removed")
+	}
+	if _, err := state.TryLock(state.Key("acme", "shop", 7)); err != nil {
+		t.Errorf("the PR's lock was left held: %v", err)
+	}
+	rec := h.record()
+	if rec.State != state.StateProcessing || rec.HeadSHA != pubHead {
+		t.Errorf("record = %+v", rec)
+	}
+	log, _ := os.ReadFile(rec.Log)
+	if strings.Count(string(log), "publishing https://github.com/acme/shop/pull/7") != 1 || !strings.Contains(string(log), "is already published") {
+		t.Errorf("log should show one run and why the rerun was skipped:\n%s", log)
+	}
+}
+
+// The same window, but the head did change: the re-lock publishes it.
+func TestPublishRelockForAChangedHeadPublishesIt(t *testing.T) {
+	h := newPubHarness(t)
+	newHead := strings.Repeat("a", 40)
+	h.lateMarker(newHead)
+
+	if err := h.run("--no-comment"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if fmt.Sprint(h.api.heads) != fmt.Sprint([]string{pubHead, newHead}) {
+		t.Errorf("published heads = %v, want the old head and then the pushed one", h.api.heads)
+	}
+	if state.HasPending(state.Key("acme", "shop", 7)) {
+		t.Error("the marker was not removed")
+	}
+}
+
 func TestPublishRerunsAtMostThreeTimes(t *testing.T) {
 	h := newPubHarness(t)
 	h.pushDuringRun(10, func(i int) string { return strings.Repeat(string("abcdefgh"[i-1]), 40) })
@@ -766,6 +1096,87 @@ func TestPublishRerunsAtMostThreeTimes(t *testing.T) {
 	}
 }
 
+// A push mid-run whose rerun fails before it uploads anything: the earlier
+// upload is still live, so the process follows it and reports its review, and
+// the failed rerun keeps its own outcome (failure notification, failed record,
+// error exit).
+func TestPublishRerunThatFailsStillFollowsTheEarlierUpload(t *testing.T) {
+	h := newPubHarness(t)
+	newHead := strings.Repeat("a", 40)
+	h.pushDuringRun(1, func(int) string { return newHead })
+	push := h.env.notify
+	h.env.notify = func(title, message string) bool {
+		if len(h.notices) == 0 {
+			// The rerun's finalize will be refused.
+			h.api.mu.Lock()
+			h.api.finalizeStatus = http.StatusConflict
+			h.api.mu.Unlock()
+		}
+		return push(title, message)
+	}
+
+	err := h.run("--wait", "--no-comment")
+	if err == nil || !strings.Contains(err.Error(), "conflicts") {
+		t.Fatalf("the failed rerun's error must be returned, got %v", err)
+	}
+	if fmt.Sprint(h.api.heads) != fmt.Sprint([]string{pubHead, newHead}) {
+		t.Errorf("published heads = %v, want the old head and then the pushed one", h.api.heads)
+	}
+	// uploaded (run 1), failed (run 2), ready (run 1's review).
+	if len(h.notices) != 3 || h.notices[0] != "PR #7 uploaded to Pair" || h.notices[1] != "Pair review failed" || h.notices[2] != "Pair review ready" {
+		t.Errorf("notices = %q, want uploaded, failed, ready", h.notices)
+	}
+	if !h.api.sawPath("GET /api/v1/reviews/publications/" + pubPubID + "/analysis") {
+		t.Error("the earlier upload was never followed")
+	}
+	// The record stays the failed rerun's: the follower does not put the older
+	// upload's state over it.
+	rec := h.record()
+	if rec.State != state.StateFailed || rec.HeadSHA != newHead || !strings.Contains(rec.Error, "conflicts") {
+		t.Errorf("record = %+v, want the failed rerun's", rec)
+	}
+	if !strings.Contains(h.stdout.String(), "published https://pair.sh/acme/shop/pull/7 (ready)") {
+		t.Errorf("stdout = %q, want the earlier upload's result", h.stdout)
+	}
+	log, _ := os.ReadFile(rec.Log)
+	if !strings.Contains(string(log), "analysis succeeded") || !strings.Contains(string(log), "review ready") {
+		t.Errorf("the follow is not in the log file:\n%s", log)
+	}
+}
+
+// A rerun that ends without uploading and without failing (nothing to publish)
+// must not leave the earlier upload unreported either.
+func TestPublishRerunThatDoesNothingStillFollowsTheEarlierUpload(t *testing.T) {
+	h := newPubHarness(t)
+	h.pushDuringRun(1, func(int) string { return strings.Repeat("a", 40) })
+	runs := 0
+	real := runPublisher
+	runPublisher = func(ctx context.Context, p *publisher) error {
+		runs++
+		if runs == 2 {
+			return nil // finds its head already published and does nothing
+		}
+		return real(ctx, p)
+	}
+	t.Cleanup(func() { runPublisher = real })
+
+	if err := h.run("--wait", "--no-comment"); err != nil {
+		t.Fatalf("publish: %v", err)
+	}
+	if runs != 2 || len(h.api.heads) != 1 {
+		t.Fatalf("runs = %d, reservations = %d, want a second run that uploaded nothing", runs, len(h.api.heads))
+	}
+	if len(h.notices) != 2 || h.notices[0] != "PR #7 uploaded to Pair" || h.notices[1] != "Pair review ready" {
+		t.Errorf("notices = %q, want uploaded then ready", h.notices)
+	}
+	if rec := h.record(); rec.State != state.StateReady || rec.HeadSHA != pubHead {
+		t.Errorf("record = %+v, want the earlier upload, ready", rec)
+	}
+	if !strings.Contains(h.stdout.String(), "(ready)") {
+		t.Errorf("stdout = %q", h.stdout)
+	}
+}
+
 func TestPublishSameHeadReplaysItsRawSessions(t *testing.T) {
 	h := newPubHarness(t)
 	if err := h.run("--no-comment"); err != nil {
@@ -781,6 +1192,22 @@ func TestPublishSameHeadReplaysItsRawSessions(t *testing.T) {
 	h.s3.types = h.s3.types[1:]
 	if _, ok := h.s3.uploadedZip(t)["raw-sessions/claude-code/s1/s1.jsonl"]; !ok {
 		t.Error("republishing the same head must repeat its raw-session range")
+	}
+}
+
+// The publish a hook starts in the background follows the review like an
+// explicit --wait, with the default timeout.
+func TestHookPublishFollowsTheReview(t *testing.T) {
+	args := prtrigger.PublishArgs(prtrigger.PR{Owner: "acme", Repo: "shop", Number: 7}, "/r")
+	if len(args) == 0 || args[0] != "publish" {
+		t.Fatalf("args = %q", args)
+	}
+	a, err := parsePublishArgs(args[1:])
+	if err != nil {
+		t.Fatalf("the hook's arguments do not parse: %v", err)
+	}
+	if !a.Wait || a.Timeout != defaultAnalysisTimeout || a.RepoDir != "/r" || a.DryRun || a.PRArg != "https://github.com/acme/shop/pull/7" {
+		t.Errorf("parsed = %+v, want --wait with the default timeout", a)
 	}
 }
 

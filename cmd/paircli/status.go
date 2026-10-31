@@ -21,13 +21,54 @@ import (
 // statusReport is the `paircli status --json` document. It never holds a
 // credential, only whether one is usable.
 type statusReport struct {
-	SchemaVersion int                 `json:"schema_version"`
-	CLIVersion    string              `json:"cli_version"`
-	ServerURL     string              `json:"server_url"`
-	LoggedIn      bool                `json:"logged_in"`
-	Hooks         map[string]bool     `json:"hooks"`
-	Setup         setupSummary        `json:"setup"`
-	Publications  []state.Publication `json:"publications"`
+	SchemaVersion int               `json:"schema_version"`
+	CLIVersion    string            `json:"cli_version"`
+	ServerURL     string            `json:"server_url"`
+	LoggedIn      bool              `json:"logged_in"`
+	Hooks         map[string]bool   `json:"hooks"`
+	Setup         setupSummary      `json:"setup"`
+	Publications  []publicationView `json:"publications"`
+}
+
+// publicationView is a publication record as `paircli status --json` prints
+// it: what the publisher did (running, uploaded, ready, failed), never where
+// Pair's analysis stands. The stored record keeps that for itself; the view
+// leaves out its analysis fields and reads its states and steps the way the
+// human output does (see stateLabel).
+type publicationView struct {
+	SchemaVersion int       `json:"schema_version"`
+	PRURL         string    `json:"pr_url"`
+	Owner         string    `json:"owner"`
+	Repo          string    `json:"repo"`
+	Number        int       `json:"number"`
+	HeadSHA       string    `json:"head_sha"`
+	State         string    `json:"state"`
+	Step          string    `json:"step"`
+	Error         string    `json:"error"`
+	PublicationID string    `json:"publication_id"`
+	Log           string    `json:"log"`
+	ReviewURL     string    `json:"review_url"`
+	StartedAt     time.Time `json:"started_at"`
+	UpdatedAt     time.Time `json:"updated_at"`
+}
+
+// viewOf is the printed form of a stored record. The analysis step reads as
+// finalize, the last step a publisher's own run goes through, and an error is
+// shown only for a record that reads as failed: a failed analysis is not one.
+func viewOf(p state.Publication) publicationView {
+	label := stateLabel(p)
+	v := publicationView{
+		SchemaVersion: p.SchemaVersion, PRURL: p.PRURL, Owner: p.Owner, Repo: p.Repo, Number: p.Number,
+		HeadSHA: p.HeadSHA, State: label, Step: p.Step, PublicationID: p.PublicationID, Log: p.Log,
+		ReviewURL: p.ReviewURL, StartedAt: p.StartedAt, UpdatedAt: p.UpdatedAt,
+	}
+	if v.Step == state.StepAnalysis {
+		v.Step = state.StepFinalize
+	}
+	if label == state.StateFailed {
+		v.Error = p.Error
+	}
+	return v
 }
 
 // setupSummary is the part of setup.json `paircli status` reports.
@@ -80,7 +121,7 @@ func buildStatus(prFilter string) (statusReport, error) {
 		LoggedIn:      loggedInFor(server),
 		Hooks:         map[string]bool{},
 		Setup:         currentSetup(),
-		Publications:  []state.Publication{},
+		Publications:  []publicationView{},
 	}
 	for _, name := range harnessOrder {
 		report.Hooks[name] = harnessTable[name].Installed()
@@ -103,7 +144,9 @@ func buildStatus(prFilter string) (statusReport, error) {
 		}
 		pubs = matching
 	}
-	report.Publications = append(report.Publications, refreshPublications(pubs)...)
+	for _, p := range refreshPublications(pubs) {
+		report.Publications = append(report.Publications, viewOf(p))
+	}
 	return report, nil
 }
 
@@ -140,11 +183,12 @@ var statusAnalysisReader = func() (analysisReader, bool) {
 }
 
 // refreshPublications asks the server about up to refreshLimit publications
-// that still wait on their analysis, because only `publish --wait` follows the
-// job and a publish without it (or past its timeout) leaves the record
-// "processing" for good. A record is rewritten only when the server's answer
-// changes it; any error (not logged in, offline, a slow or unknown job) keeps
-// the stored record. The result is pubs with the refreshed records.
+// that still wait on their analysis, because only a publish that follows the
+// job (`--wait`, which the hooks pass) settles the record, and one that does
+// not leaves it "processing" for good. A record is rewritten only when the
+// server's answer changes it; any error (not logged in, offline, a slow or
+// unknown job) keeps the stored record. The result is pubs with the refreshed
+// records.
 func refreshPublications(pubs []state.Publication) []state.Publication {
 	var pending []int
 	for i, p := range pubs {
@@ -176,6 +220,7 @@ func refreshPublications(pubs []state.Publication) []state.Publication {
 			}
 			if updated := withAnalysis(*p, an); updated != *p {
 				if state.WritePublication(updated) == nil {
+					logAnalysisFailure(*p, an)
 					*p = updated
 				}
 			}
@@ -186,23 +231,45 @@ func refreshPublications(pubs []state.Publication) []state.Publication {
 }
 
 // withAnalysis maps an analysis state onto a publication record the way
-// `publish --wait` does: succeeded is ready, failed is failed with the error
-// code, queued and running are processing.
+// `publish --wait` does: a finished analysis, succeeded or failed, is ready
+// (the review is there to open; a failure's code goes to the log, see
+// logAnalysisFailure), queued and running are processing.
 func withAnalysis(p state.Publication, an *publish.Analysis) state.Publication {
 	p.AnalysisJobID, p.AnalysisState = an.JobID, an.State
-	switch an.State {
-	case publish.AnalysisSucceeded:
+	if an.Done() {
 		p.State, p.Error = state.StateReady, ""
-	case publish.AnalysisFailed:
-		code := "unknown"
-		if an.ErrorCode != nil && *an.ErrorCode != "" {
-			code = *an.ErrorCode
-		}
-		p.State, p.Error = state.StateFailed, fmt.Sprintf("the analysis failed (%s)", code)
-	default:
+	} else {
 		p.State = state.StateProcessing
 	}
 	return p
+}
+
+// logAnalysisFailure appends the error code of a failed analysis to the
+// publication's log file, the only place a code is kept. No log, no line.
+func logAnalysisFailure(p state.Publication, an *publish.Analysis) {
+	if an.State != publish.AnalysisFailed || p.Log == "" {
+		return
+	}
+	f, err := os.OpenFile(p.Log, os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s paircli status: analysis failed (%s)\n", time.Now().Format("15:04:05"), analysisErrorCode(an))
+}
+
+// stateLabel is how a record's state reads on a terminal. It speaks only of
+// what the publisher did: the evidence is uploaded, then the review is ready.
+// Where the analysis stands, and whether it failed, is not said; a record an
+// earlier paircli left "failed" at the analysis step reads as ready too.
+func stateLabel(p state.Publication) string {
+	switch {
+	case p.State == state.StateFailed && p.Step == state.StepAnalysis:
+		return state.StateReady
+	case p.State == state.StateProcessing:
+		return state.StateUploaded
+	}
+	return p.State
 }
 
 // loggedInFor reports whether a credential for server is usable, the same
@@ -266,20 +333,21 @@ func printStatus(w io.Writer, r statusReport) error {
 	} else {
 		b.WriteString("publications:\n")
 		for _, p := range r.Publications {
-			fmt.Fprintf(&b, "  %s/%s#%d  %s", p.Owner, p.Repo, p.Number, p.State)
-			if p.Step != "" {
-				fmt.Fprintf(&b, " (%s", p.Step)
-				if p.AnalysisState != "" {
-					fmt.Fprintf(&b, ", analysis %s", p.AnalysisState)
-				}
-				b.WriteString(")")
+			label := p.State
+			fmt.Fprintf(&b, "  %s/%s#%d  %s", p.Owner, p.Repo, p.Number, label)
+			// The step says where a run is or where it stopped; once the
+			// evidence is uploaded there is nothing more to say about it.
+			if p.Step != "" && (label == state.StateRunning || label == state.StateFailed) {
+				fmt.Fprintf(&b, " (%s)", p.Step)
 			}
 			fmt.Fprintf(&b, "  %s  %s\n", ago(p.UpdatedAt), p.ReviewURL)
-			if p.Error != "" {
-				fmt.Fprintf(&b, "      error: %s\n", p.Error)
-			}
-			if p.State == state.StateFailed && p.Log != "" {
-				fmt.Fprintf(&b, "      log: %s\n", p.Log)
+			if label == state.StateFailed {
+				if p.Error != "" {
+					fmt.Fprintf(&b, "      error: %s\n", p.Error)
+				}
+				if p.Log != "" {
+					fmt.Fprintf(&b, "      log: %s\n", p.Log)
+				}
 			}
 		}
 	}

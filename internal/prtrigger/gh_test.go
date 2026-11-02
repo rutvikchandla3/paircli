@@ -84,3 +84,38 @@ func TestResolveCurrentBranchPR_NoGH(t *testing.T) {
 		t.Error("want an error without gh on PATH")
 	}
 }
+
+// The error says why gh found no PR, from the first line of its stderr, so the
+// hook's log line does.
+func TestResolveCurrentBranchPR_ErrorCarriesGHReason(t *testing.T) {
+	tests := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"no pull request", `echo 'no pull requests found for branch "feat"' >&2; exit 1`,
+			`gh pr view: no pull requests found for branch "feat"`},
+		{"not a repository", `printf '\nfailed to run git: fatal: not a git repository\nmore\n' >&2; exit 1`,
+			"gh pr view: failed to run git: fatal: not a git repository"},
+		{"silent failure", "exit 1", "gh pr view: exit status 1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeGH(t, tt.body)
+			if _, err := ResolveCurrentBranchPR(t.TempDir()); err == nil || err.Error() != tt.want {
+				t.Errorf("err = %v, want %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestResolveCurrentBranchPR_Timeout(t *testing.T) {
+	orig := resolveTimeout
+	resolveTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { resolveTimeout = orig })
+	fakeGH(t, "sleep 5")
+	_, err := ResolveCurrentBranchPR(t.TempDir())
+	if want := "gh pr view: no answer within 200ms"; err == nil || err.Error() != want {
+		t.Errorf("err = %v, want %q", err, want)
+	}
+}

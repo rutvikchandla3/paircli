@@ -2,6 +2,7 @@ package prtrigger
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -71,27 +72,37 @@ func parseResponse(raw json.RawMessage) response {
 
 // PRFromEvent returns the pull request an event's command created or updated.
 // A failed or interrupted command, or one that is neither `gh pr create` nor
-// a branch `git push`, yields none. A push, and any command whose response the
-// harness did not send, resolves the PR from the branch checked out in dir;
-// `gh pr create` otherwise reads the single PR URL it printed. Output naming
-// zero or several PRs is ambiguous and yields none.
-func PRFromEvent(ev Event, dir string, resolve func(dir string) (PR, error)) (PR, bool) {
+// a branch `git push`, yields none and no error. A push, and any command whose
+// response the harness did not send, resolves the PR from the branch checked
+// out in dir; `gh pr create` otherwise reads the single PR URL it printed.
+// When that finds no PR (dir is not a repository or its branch has no PR, or
+// the output names zero or several PRs), the error says so.
+func PRFromEvent(ev Event, dir string, resolve func(dir string) (PR, error)) (PR, bool, error) {
 	if ev.ToolName != "Bash" {
-		return PR{}, false
+		return PR{}, false, nil
 	}
 	op, ok := CommandOperation(ev.Command)
 	if !ok {
-		return PR{}, false
+		return PR{}, false, nil
 	}
 	resp := parseResponse(ev.Response)
 	if resp.interrupted || resp.failed {
-		return PR{}, false
+		return PR{}, false, nil
+	}
+	missed := func(reason error) (PR, bool, error) {
+		return PR{}, false, fmt.Errorf("no pull request for %s in %s: %w", op.Name(), dir, reason)
 	}
 	if op.Kind == OpPush || !resp.present {
 		pr, err := resolve(dir)
-		return pr, err == nil
+		if err != nil {
+			return missed(err)
+		}
+		return pr, true, nil
 	}
-	return singlePR(resp.stdout)
+	if pr, ok := singlePR(resp.stdout); ok {
+		return pr, true, nil
+	}
+	return missed(errors.New("its output does not name exactly one pull request URL"))
 }
 
 // singlePR parses the one PR URL in text.

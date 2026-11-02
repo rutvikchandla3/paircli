@@ -114,12 +114,18 @@ object so the agent and the user see where the review will appear:
 ```
 
 The directory is the command's own: `git -C <dir> push` and `cd <dir> && git
-push` are followed. Pushes that do not update just the current branch
-(`--all`, `--delete`, `-d`, `--mirror`, `--tags`, a `:ref` refspec), failed or
-interrupted commands, a `gh pr create` that did not print exactly one GitHub
-PR URL, and commands that only mention `git push` (`echo 'git push'`) do
-nothing. Nothing is printed in those cases, and a failure to start the publish
-is logged to `~/.paircli/hook-errors.log` and never reaches the agent.
+push` are followed. `$NAME` or `${NAME}` in `<dir>` is expanded when the same
+command assigned it first (`W=/path; git -C $W push`, `export W=/path && cd $W
+&& git push`); a variable it did not assign is left as written, because the
+hook cannot see the shell's own variables. Pushes that do not update just the
+current branch (`--all`, `--delete`, `-d`, `--mirror`, `--tags`, a `:ref`
+refspec), failed or interrupted commands, and commands that only mention `git
+push` (`echo 'git push'`) do nothing. Nothing is printed in those cases. A
+`gh pr create` or `git push` whose PR cannot be found (the directory is not a
+repository, its branch has no open PR, or `gh pr create` did not print exactly
+one GitHub PR URL) prints nothing either, but logs one line naming the
+directory and gh's reason to `~/.paircli/hook-errors.log`, as does a failure to
+start the publish; neither reaches the agent.
 
 Repeated pushes are safe: `paircli publish` takes a per-PR lock. A publish
 started while another one is running for the PR leaves a marker
@@ -144,5 +150,5 @@ URL in the text) when the review is ready.
 | `~/.paircli/state/` | `setup.json`, `publications/`, `locks/`, journals |
 | `~/.paircli/scans/<owner>__<repo>/pr-<n>/<head>/` | one scan's output folder (0700) |
 | `~/.paircli/logs/` | `setup-*.log`, `publish-*.log` |
-| `~/.paircli/hook-errors.log` | hook failures |
+| `~/.paircli/hook-errors.log` | hook failures, and PR commands whose PR was not found |
 | `~/.paircli/auth.json` | the credential (0600) |

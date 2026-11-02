@@ -106,7 +106,6 @@ func TestRunnerRun_PrintsAndStartsNothingForOtherEvents(t *testing.T) {
 	}{
 		{"unrelated command", bashEvent("ls -la", "", nil), &pr},
 		{"git commit", bashEvent("git commit -am wip", "", nil), &pr},
-		{"push without an open PR", bashEvent("git push", "", nil), nil},
 		{"failed push", bashEvent("git push", "", map[string]any{"exit_code": 1}), &pr},
 		{"failed create", bashEvent("gh pr create", "", map[string]any{"exit_code": 1}), &pr},
 		{"delete push", bashEvent("git push --delete origin x", "", nil), &pr},
@@ -123,6 +122,54 @@ func TestRunnerRun_PrintsAndStartsNothingForOtherEvents(t *testing.T) {
 				t.Errorf("starts = %+v, output = %q, want neither", starts, out.String())
 			}
 		})
+	}
+}
+
+// A PR command whose PR cannot be found starts and prints nothing, and returns
+// the reason, naming the directory it looked in, for the hook to log.
+func TestRunnerRun_MissIsReturnedAndNothingIsPrinted(t *testing.T) {
+	tests := []struct {
+		name    string
+		command string
+		stdout  string
+		want    string
+	}{
+		{"push without an open PR", "git push", "", "no pull request for git push in /work: no pull request"},
+		{"push through a variable the command never set", "git -C $W push", "",
+			"no pull request for git push in /work/$W: no pull request"},
+		{"create that printed no PR URL", "gh pr create --web", "Opening github.com/five-sh/awt/pull/new/feat in your browser.\n",
+			"no pull request for gh pr create in /work: its output does not name exactly one pull request URL"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var starts []startCall
+			var out bytes.Buffer
+			ev := bashEvent(tt.command, tt.stdout, nil)
+			ev.CWD = "/work"
+			err := fakeRunner(nil, nil, &starts).Run(ev, &out)
+			if err == nil || err.Error() != tt.want {
+				t.Errorf("err = %v, want %q", err, tt.want)
+			}
+			if len(starts) != 0 || out.Len() != 0 {
+				t.Errorf("starts = %+v, output = %q, want neither", starts, out.String())
+			}
+		})
+	}
+}
+
+// The case that went unpublished: a push into another repository through a
+// variable the same command assigned.
+func TestRunnerRun_PushThroughAnAssignedVariable(t *testing.T) {
+	pr := wantPR
+	var starts []startCall
+	ev := bashEvent("W=/repos/other; git -C $W push", "branch updated\n", nil)
+	ev.CWD = "/work"
+	var out bytes.Buffer
+	if err := fakeRunner(&pr, nil, &starts).Run(ev, &out); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if len(starts) != 1 || starts[0].dir != "/repos/other" || out.Len() == 0 {
+		t.Errorf("starts = %+v, output = %q, want one start in /repos/other and the object", starts, out.String())
 	}
 }
 

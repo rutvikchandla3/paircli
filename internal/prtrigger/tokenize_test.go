@@ -17,6 +17,7 @@ func TestTokenize(t *testing.T) {
 		{"single quotes are literal", `echo 'a b \n $x'`, []string{"echo", `a b \n $x`}},
 		{"double quotes keep spaces", `echo "a  b"`, []string{"echo", "a  b"}},
 		{"double quote escapes", `echo "a\"b\\c\d"`, []string{"echo", `a"b\c\d`}},
+		{"double quotes escape $", `echo "\$x"`, []string{"echo", "$x"}},
 		{"adjacent quoted parts join", `a'b'"c"d`, []string{"abcd"}},
 		{"empty quotes make an empty word", `echo ""`, []string{"echo", ""}},
 		{"backslash escapes a space", `cd my\ dir`, []string{"cd", "my dir"}},
@@ -38,6 +39,34 @@ func TestTokenize(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := tokenize(tt.command); !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("tokenize(%q) = %q, want %q", tt.command, got, tt.want)
+			}
+		})
+	}
+}
+
+// lex marks the `$` a shell would expand: unquoted or double-quoted, not
+// single-quoted or escaped.
+func TestLexDollars(t *testing.T) {
+	tests := []struct {
+		command string
+		want    []int
+	}{
+		{`$W`, []int{0}},
+		{`"$W"`, []int{0}},
+		{`${W}/x`, []int{0}},
+		{`a$W$X`, []int{1, 3}},
+		{`'$W'`, nil},
+		{`\$W`, nil},
+		{`"\$W"`, nil},
+		{`'$A'$B`, []int{2}},
+		{`"é$W"`, []int{2}},
+		{`plain`, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.command, func(t *testing.T) {
+			words := lex(tt.command)
+			if len(words) != 1 || !reflect.DeepEqual(words[0].dollars, tt.want) {
+				t.Errorf("lex(%q) = %+v, want one word with dollars %v", tt.command, words, tt.want)
 			}
 		})
 	}

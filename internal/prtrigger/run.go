@@ -43,7 +43,9 @@ type Runner struct {
 var Default = Runner{Resolve: ResolveCurrentBranchPR, Start: StartPublish}
 
 // Handle starts a publish when ev is a successful `gh pr create` or `git push`
-// on a PR branch. It returns nil when there is nothing to do.
+// on a PR branch. It returns nil when there is nothing to do, and an error with
+// no Output when such a command's PR cannot be found (see PRFromEvent) or the
+// publish cannot start, so the hook logs why nothing was published.
 func (r Runner) Handle(ev Event) (*Output, error) {
 	if _, ok := CommandOperation(ev.Command); !ok {
 		return nil, nil
@@ -52,9 +54,9 @@ func (r Runner) Handle(ev Event) (*Output, error) {
 	if err != nil {
 		return nil, err
 	}
-	pr, ok := PRFromEvent(ev, dir, r.Resolve)
+	pr, ok, err := PRFromEvent(ev, dir, r.Resolve)
 	if !ok {
-		return nil, nil
+		return nil, err
 	}
 	if err := r.Start(pr, dir); err != nil {
 		return nil, fmt.Errorf("start publish for %s: %w", pr.URL(), err)

@@ -3,6 +3,7 @@ package codex
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -863,15 +864,40 @@ func TestRunHookEvent_PostToolUse_NoTriggerPrintsNothing(t *testing.T) {
 	if len(*starts) != 0 || stdout.Len() != 0 {
 		t.Errorf("starts = %+v, stdout = %q, want neither", *starts, stdout.String())
 	}
+	if lines := hookErrorLines(t); len(lines) != 0 {
+		t.Errorf("hook-errors.log = %q, want nothing logged for commands that publish nothing", lines)
+	}
 }
 
-func TestRunHookEvent_PostToolUse_PushWithoutPRPrintsNothing(t *testing.T) {
+// A push whose branch has no PR prints nothing, and says so in one line of
+// hook-errors.log, naming the directory the hook looked in.
+func TestRunHookEvent_PostToolUse_PushWithoutPRIsLoggedNotPrinted(t *testing.T) {
 	_, repo := setupHookEnv(t)
 	starts, stdout := fakePRTrigger(t, nil)
 	runHookEventJSON(t, "PostToolUse", bashPayload("s-nopr", repo, "git push", ""))
 	if len(*starts) != 0 || stdout.Len() != 0 {
 		t.Errorf("starts = %+v, stdout = %q, want neither", *starts, stdout.String())
 	}
+	lines := hookErrorLines(t)
+	want := "codex: start publish: no pull request for git push in " + repo + ": no pull request"
+	if len(lines) != 1 || !strings.HasSuffix(lines[0], " "+want) {
+		t.Errorf("hook-errors.log = %q, want one line ending %q", lines, want)
+	}
+}
+
+// hookErrorLines is the lines of ~/.paircli/hook-errors.log, none when it does
+// not exist.
+func hookErrorLines(t *testing.T) []string {
+	t.Helper()
+	home, _ := os.UserHomeDir()
+	data, err := os.ReadFile(filepath.Join(home, ".paircli", "hook-errors.log"))
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
 }
 
 // A publish that cannot start is logged and never reaches the agent.
